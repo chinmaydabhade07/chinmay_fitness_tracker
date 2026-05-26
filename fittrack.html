@@ -1,0 +1,2043 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FitTrack" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#4f46e5" />
+<meta name="description" content="Private, offline-first nutrition and workout tracker" />
+<title>FitTrack</title>
+
+<link rel="manifest" href='data:application/manifest+json,{"name":"FitTrack","short_name":"FitTrack","start_url":".","scope":".","display":"standalone","orientation":"portrait","background_color":"%23f5f5f7","theme_color":"%234f46e5","description":"Private nutrition and workout tracker","icons":[{"src":"data:image/svg%2bxml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect width=%27192%27 height=%27192%27 rx=%2742%27 fill=%27%234f46e5%27/><path d=%27M52 70 h88 v14 h-37 v58 h-14 v-58 h-37 z%27 fill=%27white%27/><circle cx=%27148%27 cy=%2748%27 r=%2716%27 fill=%27%2310b981%27/></svg>","sizes":"192x192","type":"image/svg+xml","purpose":"any maskable"},{"src":"data:image/svg%2bxml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 512 512%27><rect width=%27512%27 height=%27512%27 rx=%27112%27 fill=%27%234f46e5%27/><path d=%27M140 188 h232 v36 h-98 v152 h-36 v-152 h-98 z%27 fill=%27white%27/><circle cx=%27396%27 cy=%27128%27 r=%2742%27 fill=%27%2310b981%27/></svg>","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}]}' />
+
+<link rel="icon" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%234f46e5"/><path d="M17 23h30v5h-13v20h-4V28H17z" fill="white"/><circle cx="50" cy="16" r="6" fill="%2310b981"/></svg>' />
+<link rel="apple-touch-icon" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180"><rect width="180" height="180" rx="40" fill="%234f46e5"/><path d="M48 65h84v14h-35v54h-14V79H48z" fill="white"/><circle cx="140" cy="44" r="14" fill="%2310b981"/></svg>' />
+
+<style>
+  :root{
+    color-scheme: light;
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --border: #e5e7eb;
+    --border-soft: #f1f5f9;
+    --primary: #4f46e5;
+    --primary-soft: #eef2ff;
+    --success: #10b981;
+    --success-soft: #ecfdf5;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --danger-soft: #fee2e2;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.04);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.45;
+    overscroll-behavior-y: contain;
+    -webkit-font-smoothing: antialiased;
+  }
+  input, select, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
+
+  .app { min-height: 100vh; }
+  .content {
+    padding: calc(12px + var(--safe-top)) 14px calc(96px + var(--safe-bottom));
+    max-width: 560px;
+    margin: 0 auto;
+  }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 12px; }
+  .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+  .card h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Date nav */
+  .date-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .date-nav .date { font-size: 16px; font-weight: 600; flex: 1; text-align: center; }
+  .nav-btn {
+    width: 38px; height: 38px;
+    border: none; background: var(--card);
+    border-radius: 12px; box-shadow: var(--shadow);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+
+  /* Macro ring */
+  .macro-ring-wrap { display: flex; align-items: center; justify-content: center; padding: 10px 0 4px; }
+  .macro-ring { position: relative; }
+  .macro-ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .macro-ring .big { font-size: 32px; font-weight: 700; line-height: 1; }
+  .macro-ring .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Macro bars */
+  .macro-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .macro-cell { padding: 8px; background: var(--bg); border-radius: var(--radius-sm); }
+  .macro-cell .l { font-size: 11px; color: var(--muted); }
+  .macro-cell .v { font-size: 15px; font-weight: 700; margin-top: 2px; }
+  .macro-cell .t { font-size: 11px; color: var(--muted); }
+  .pbar { height: 5px; border-radius: 3px; background: var(--border); margin-top: 6px; overflow: hidden; }
+  .pbar > div { height: 100%; border-radius: 3px; transition: width .3s; }
+  .pbar.protein > div { background: #ef4444; }
+  .pbar.carbs > div { background: #f59e0b; }
+  .pbar.fat > div { background: #8b5cf6; }
+  .pbar.calories > div { background: var(--primary); }
+
+  /* Quick stats row */
+  .qstats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .qstat { background: var(--card); border-radius: var(--radius-sm); padding: 10px; box-shadow: var(--shadow); }
+  .qstat .l { font-size: 11px; color: var(--muted); }
+  .qstat .v { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .qstat .delta { font-size: 11px; margin-top: 2px; }
+  .delta.pos { color: var(--success); }
+  .delta.neg { color: var(--danger); }
+
+  /* Meal section */
+  .meal-block { background: var(--card); border-radius: var(--radius); margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .meal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; }
+  .meal-head .t { font-weight: 600; font-size: 15px; }
+  .meal-head .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .meal-head .add-btn {
+    background: var(--primary-soft); color: var(--primary); border: none;
+    width: 36px; height: 36px; border-radius: 12px; font-size: 22px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .food-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border-soft); gap: 10px; }
+  .food-row .nm { font-size: 14px; font-weight: 500; }
+  .food-row .sv { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .food-row .right { text-align: right; min-width: 70px; }
+  .food-row .cal { font-size: 14px; font-weight: 600; }
+  .food-row .mc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .food-row.empty { color: var(--muted); font-size: 13px; justify-content: center; padding: 16px; }
+  .food-row .actions { display: flex; gap: 4px; }
+  .icon-btn-sm {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: transparent; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+  }
+  .icon-btn-sm:active { background: var(--bg); }
+  .icon-btn-sm.danger { color: var(--danger); }
+
+  /* Workouts */
+  .workout-card { background: var(--card); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+  .workout-card .wh { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .workout-card .wn { font-weight: 600; font-size: 15px; }
+  .workout-card .wt { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+  .badge.strength { background: #e0e7ff; color: #4338ca; }
+  .badge.cardio { background: #ecfdf5; color: #047857; }
+  .sets-table { margin-top: 10px; }
+  .sets-table .hdr {
+    display: grid; grid-template-columns: 32px 1fr 1fr 50px 28px;
+    gap: 6px; font-size: 11px; color: var(--muted); padding: 4px 0; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .set-row {
+    display: grid; grid-template-columns: 32px 1fr 1fr 50px 28px;
+    gap: 6px; align-items: center; margin-bottom: 6px;
+  }
+  .set-row .n { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .set-row input { padding: 8px 6px; text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--card); width: 100%; min-width: 0; }
+  .set-row .pr-flag { color: var(--warning); font-size: 16px; text-align: center; }
+  .add-set { width: 100%; padding: 10px; margin-top: 4px; background: var(--bg); border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .notes-input { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); resize: vertical; min-height: 36px; }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.92);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid var(--border);
+    padding-bottom: var(--safe-bottom);
+    display: flex; z-index: 50;
+  }
+  .bottom-nav button {
+    flex: 1; padding: 8px 4px 6px; background: transparent; border: none;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 10px; color: var(--muted); cursor: pointer; min-height: 56px;
+    font-weight: 500;
+  }
+  .bottom-nav button.active { color: var(--primary); }
+  .bottom-nav svg { width: 22px; height: 22px; }
+
+  /* FAB sticky add */
+  .fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(72px + var(--safe-bottom));
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: var(--primary); color: white; border: none;
+    box-shadow: 0 6px 14px rgba(79,70,229,0.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 40;
+    cursor: pointer;
+  }
+  .fab svg { width: 26px; height: 26px; }
+
+  /* Bottom sheet */
+  .sheet-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    z-index: 100; opacity: 0; pointer-events: none;
+    transition: opacity .22s ease;
+  }
+  .sheet-bg.open { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--card);
+    border-radius: 22px 22px 0 0;
+    max-height: 92vh;
+    overflow-y: auto;
+    transform: translateY(100%);
+    transition: transform .26s cubic-bezier(.32,.72,0,1);
+    padding: 0 16px calc(20px + var(--safe-bottom));
+    z-index: 101;
+  }
+  .sheet.open { transform: translateY(0); }
+  .sheet-handle { width: 36px; height: 4px; background: #d1d5db; border-radius: 2px; margin: 10px auto 6px; }
+  .sheet-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 12px; position: sticky; top: 0; background: var(--card); z-index: 1; }
+  .sheet-header h2 { font-size: 17px; margin: 0; font-weight: 600; }
+  .sheet-close {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--bg); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+  }
+
+  /* Form */
+  label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 5px; font-weight: 500; }
+  .field { margin-bottom: 12px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .input, .select, .textarea {
+    width: 100%; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card); font-size: 16px; /* prevents zoom on iOS */
+    color: var(--text);
+  }
+  .select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23636363'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 32px; }
+  .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.15); }
+  .textarea { min-height: 64px; resize: vertical; }
+  .btn {
+    width: 100%; padding: 13px; border: none; border-radius: 12px;
+    background: var(--primary); color: white; font-weight: 600; font-size: 15px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.6; }
+  .btn.secondary { background: var(--bg); color: var(--text); }
+  .btn.danger { background: var(--danger-soft); color: var(--danger); }
+  .btn.success { background: var(--success); color: white; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { flex: 1; }
+
+  /* Search list */
+  .search-list { margin-top: 4px; max-height: 50vh; overflow-y: auto; }
+  .search-item {
+    padding: 12px; border-radius: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-bottom: 4px;
+  }
+  .search-item:active { background: var(--bg); }
+  .search-item .nm { font-weight: 500; font-size: 14px; }
+  .search-item .sv { font-size: 12px; color: var(--muted); }
+  .search-item .cal { font-size: 13px; font-weight: 600; color: var(--primary); }
+
+  /* History bars */
+  .history-bars { display: flex; align-items: flex-end; gap: 6px; height: 160px; padding: 16px 4px 8px; }
+  .hb { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+  .hb .bar-stack { width: 100%; flex: 1; display: flex; flex-direction: column-reverse; justify-content: flex-start; min-height: 1px; gap: 1px; }
+  .hb .bar { width: 100%; background: var(--primary); border-radius: 3px 3px 0 0; min-height: 0; transition: height .3s; }
+  .hb .bar.target { background: var(--border); }
+  .hb .lbl { font-size: 10px; color: var(--muted); }
+  .hb .v { font-size: 10px; font-weight: 600; }
+  .hb.active .bar { background: var(--success); }
+  .hb.active .lbl { color: var(--primary); font-weight: 600; }
+
+  /* Weight trend */
+  .trend { padding: 8px 0; }
+  .trend svg { width: 100%; height: 80px; }
+  .trend-stats { display: flex; justify-content: space-around; padding: 6px 0; font-size: 12px; color: var(--muted); }
+  .trend-stats b { color: var(--text); font-size: 14px; }
+
+  /* Profile */
+  .profile-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 12px; overflow: hidden; }
+  .profile-row { display: flex; align-items: center; justify-content: space-between; padding: 14px; border-bottom: 1px solid var(--border-soft); cursor: pointer; gap: 8px; }
+  .profile-row:last-child { border-bottom: none; }
+  .profile-row:active { background: var(--bg); }
+  .profile-row .l { font-size: 14px; }
+  .profile-row .v { font-size: 14px; color: var(--muted); font-weight: 500; text-align: right; }
+  .profile-row .ic { color: var(--muted); }
+  .targets-card {
+    background: linear-gradient(135deg, #4f46e5, #6366f1);
+    color: white; border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+    box-shadow: 0 4px 12px rgba(79,70,229,0.2);
+  }
+  .targets-card .ttl { font-size: 12px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.04em; }
+  .targets-card .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .targets-card .t-cell .v { font-size: 18px; font-weight: 700; }
+  .targets-card .t-cell .l { font-size: 11px; opacity: 0.8; }
+
+  /* Toast */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(90px + var(--safe-bottom));
+    background: rgba(15,23,42,0.92); color: white;
+    padding: 10px 16px; border-radius: 22px;
+    font-size: 13px; font-weight: 500; z-index: 200;
+    opacity: 0; transition: opacity .2s, transform .2s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Misc */
+  .empty-state { text-align: center; padding: 32px 16px; color: var(--muted); }
+  .empty-state .ic { font-size: 40px; opacity: 0.4; margin-bottom: 8px; }
+  .empty-state .t { font-size: 14px; font-weight: 500; color: var(--text); }
+  .empty-state .s { font-size: 13px; margin-top: 4px; }
+
+  .seg {
+    display: flex; padding: 3px; background: var(--bg); border-radius: 10px; margin-bottom: 12px;
+  }
+  .seg button {
+    flex: 1; padding: 8px; border: none; background: transparent; border-radius: 7px;
+    font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer;
+  }
+  .seg button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+  .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; background: var(--bg); color: var(--muted); }
+  .pill.pr { background: #fef3c7; color: #92400e; }
+  .pill.pos { background: var(--success-soft); color: var(--success); }
+
+  details.exp { background: var(--bg); border-radius: 10px; padding: 8px 12px; margin-top: 8px; }
+  details.exp summary { font-size: 13px; font-weight: 500; cursor: pointer; color: var(--primary); list-style: none; }
+  details.exp summary::-webkit-details-marker { display: none; }
+  details.exp .nutri-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-top: 10px; }
+  details.exp .nutri-grid .r { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); padding: 2px 0; }
+  details.exp .nutri-grid .r b { color: var(--text); font-weight: 500; }
+
+  hr.sep { border: none; border-top: 1px solid var(--border-soft); margin: 14px 0; }
+
+  /* Install banner */
+  .install-banner {
+    background: var(--primary-soft); border: 1px solid rgba(79,70,229,0.15);
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .install-banner .t { font-size: 13px; font-weight: 500; }
+  .install-banner .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .install-banner button.close-x {
+    background: transparent; border: none; color: var(--muted); font-size: 18px;
+    width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+
+<script>
+/* === FitTrack: mobile-first nutrition + workout PWA === */
+(function(){
+  "use strict";
+  const { useState, useEffect, useMemo, useRef, useCallback } = React;
+  const h = React.createElement;
+
+  /* ---------- Storage ---------- */
+  const STORAGE_KEY = "fittrack-v1";
+  const safeLS = {
+    get(k) { try { return localStorage.getItem(k); } catch(e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); return true; } catch(e) { return false; } },
+    del(k) { try { localStorage.removeItem(k); } catch(e) {} }
+  };
+  function loadData() {
+    const raw = safeLS.get(STORAGE_KEY);
+    if (raw) {
+      try { return migrate(JSON.parse(raw)); } catch(e) {}
+    }
+    return defaultData();
+  }
+  function defaultData() {
+    return {
+      version: 1,
+      profile: {
+        sex: "male",
+        age: 28,
+        heightCm: 175,
+        weightKg: 75,
+        bodyFatPct: null,
+        muscleKg: null,
+        fatKg: null,
+        activity: 1.55,
+        goal: "bulk",
+        customCalories: null,
+        customMacros: null,
+        units: "metric"
+      },
+      providers: {
+        active: "mock",
+        usda: { apiKey: "" },
+        nutritionix: { appId: "", appKey: "" },
+        edamam: { appId: "", appKey: "" }
+      },
+      weightLog: [],
+      days: {},
+      customFoods: [],
+      onboarded: false,
+      hideInstallBanner: false
+    };
+  }
+  function migrate(d) {
+    const def = defaultData();
+    return {
+      ...def, ...d,
+      profile: { ...def.profile, ...(d.profile || {}) },
+      providers: {
+        ...def.providers, ...(d.providers || {}),
+        usda: { ...def.providers.usda, ...((d.providers || {}).usda || {}) },
+        nutritionix: { ...def.providers.nutritionix, ...((d.providers || {}).nutritionix || {}) },
+        edamam: { ...def.providers.edamam, ...((d.providers || {}).edamam || {}) }
+      },
+      days: d.days || {},
+      weightLog: d.weightLog || [],
+      customFoods: d.customFoods || []
+    };
+  }
+
+  /* ---------- Date helpers ---------- */
+  function todayKey(d) {
+    d = d || new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function fmtDate(key) {
+    const [y,m,d] = key.split("-").map(Number);
+    const dt = new Date(y, m-1, d);
+    const today = todayKey();
+    const yest = todayKey(new Date(Date.now() - 86400000));
+    if (key === today) return "Today";
+    if (key === yest) return "Yesterday";
+    return dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+  function shift(key, n) {
+    const [y,m,d] = key.split("-").map(Number);
+    const dt = new Date(y, m-1, d);
+    dt.setDate(dt.getDate()+n);
+    return todayKey(dt);
+  }
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+
+  /* ---------- Macro / Targets ---------- */
+  function computeTargets(profile) {
+    const p = profile;
+    // Mifflin-St Jeor
+    let bmr;
+    if (p.sex === "male") bmr = 10*p.weightKg + 6.25*p.heightCm - 5*p.age + 5;
+    else bmr = 10*p.weightKg + 6.25*p.heightCm - 5*p.age - 161;
+    const tdee = bmr * (p.activity || 1.55);
+    let adjust = 0;
+    if (p.goal === "bulk") adjust = 300;
+    else if (p.goal === "cut") adjust = -400;
+    else if (p.goal === "lean-bulk") adjust = 150;
+    let calories = p.customCalories || Math.round(tdee + adjust);
+    let protein, carbs, fat;
+    if (p.customMacros) {
+      protein = p.customMacros.protein; carbs = p.customMacros.carbs; fat = p.customMacros.fat;
+    } else {
+      const proteinPerKg = p.goal === "cut" ? 2.2 : (p.goal === "bulk" ? 2.0 : 1.8);
+      protein = Math.round(p.weightKg * proteinPerKg);
+      const fatPct = p.goal === "cut" ? 0.3 : 0.27;
+      fat = Math.round((calories * fatPct) / 9);
+      const carbsKcal = calories - (protein * 4 + fat * 9);
+      carbs = Math.max(50, Math.round(carbsKcal / 4));
+    }
+    const bmi = p.heightCm > 0 ? p.weightKg / Math.pow(p.heightCm/100, 2) : 0;
+    return { bmr: Math.round(bmr), tdee: Math.round(tdee), calories, protein, carbs, fat, bmi: Math.round(bmi*10)/10 };
+  }
+  function bmiCategory(bmi) {
+    if (!bmi) return "";
+    if (bmi < 18.5) return "Underweight";
+    if (bmi < 25) return "Healthy";
+    if (bmi < 30) return "Overweight";
+    return "Obese";
+  }
+
+  /* ---------- Nutrition Providers (pluggable) ---------- */
+  // Each provider: { id, name, search(query, cfg) -> [results], requiresCreds(cfg) -> bool }
+  // Result shape: { id, name, serving, calories, protein, carbs, fat, fiber?, sugar?, sodium?, micros?: {} }
+
+  const MOCK_FOODS = [
+    { id:"jowar-bhakri", name:"Jowar Bhakri", serving:"1 piece (60g)", calories:120, protein:3, carbs:25, fat:1, fiber:3, sugar:0, sodium:2 },
+    { id:"roti", name:"Chapati / Roti", serving:"1 piece (40g)", calories:100, protein:3, carbs:18, fat:2, fiber:2, sugar:0, sodium:1 },
+    { id:"bajra-roti", name:"Bajra Roti", serving:"1 piece (50g)", calories:115, protein:3, carbs:22, fat:2, fiber:3, sugar:0, sodium:2 },
+    { id:"rice-basmati", name:"Basmati Rice (cooked)", serving:"1 cup (150g)", calories:200, protein:4, carbs:45, fat:0.5, fiber:1, sugar:0, sodium:1 },
+    { id:"rice-brown", name:"Brown Rice (cooked)", serving:"1 cup (195g)", calories:215, protein:5, carbs:45, fat:1.8, fiber:3.5, sugar:0.7, sodium:10 },
+    { id:"dal-toor", name:"Toor Dal", serving:"1 cup (200g)", calories:200, protein:11, carbs:30, fat:4, fiber:8, sugar:2, sodium:300 },
+    { id:"dal-moong", name:"Moong Dal", serving:"1 cup (200g)", calories:190, protein:14, carbs:28, fat:1, fiber:9, sugar:1, sodium:280 },
+    { id:"rajma", name:"Rajma (cooked)", serving:"1 cup (180g)", calories:220, protein:13, carbs:38, fat:1, fiber:11, sugar:3, sodium:280 },
+    { id:"chole", name:"Chole / Chana Masala", serving:"1 cup (200g)", calories:270, protein:12, carbs:35, fat:9, fiber:9, sugar:5, sodium:550 },
+    { id:"paneer", name:"Paneer", serving:"100g", calories:290, protein:18, carbs:6, fat:22, fiber:0, sugar:1, sodium:18 },
+    { id:"palak-paneer", name:"Palak Paneer", serving:"1 cup (200g)", calories:280, protein:14, carbs:14, fat:20, fiber:5, sugar:3, sodium:600 },
+    { id:"okra-sabji", name:"Okra Sabji (Bhindi)", serving:"1 cup (150g)", calories:90, protein:3, carbs:12, fat:4, fiber:5, sugar:3, sodium:300 },
+    { id:"aloo-sabji", name:"Aloo Sabji", serving:"1 cup (150g)", calories:180, protein:3, carbs:28, fat:7, fiber:3, sugar:2, sodium:400 },
+    { id:"eggs-bhurji", name:"Eggs Bhurji", serving:"2 eggs", calories:200, protein:13, carbs:3, fat:15, fiber:1, sugar:1, sodium:280 },
+    { id:"boiled-eggs", name:"Boiled Eggs", serving:"2 eggs", calories:155, protein:13, carbs:1, fat:11, fiber:0, sugar:0, sodium:124 },
+    { id:"omelette", name:"Omelette (2 eggs)", serving:"2 eggs", calories:190, protein:13, carbs:1, fat:14, fiber:0, sugar:1, sodium:200 },
+    { id:"idli", name:"Idli", serving:"2 pieces", calories:120, protein:4, carbs:25, fat:0.5, fiber:1, sugar:0, sodium:200 },
+    { id:"dosa", name:"Plain Dosa", serving:"1 piece", calories:170, protein:4, carbs:25, fat:6, fiber:1, sugar:0, sodium:250 },
+    { id:"poha", name:"Poha", serving:"1 cup (180g)", calories:230, protein:5, carbs:42, fat:5, fiber:2, sugar:2, sodium:350 },
+    { id:"upma", name:"Upma", serving:"1 cup (180g)", calories:220, protein:6, carbs:35, fat:7, fiber:2, sugar:2, sodium:380 },
+    { id:"curd", name:"Curd / Yogurt (plain)", serving:"1 cup (200g)", calories:120, protein:7, carbs:9, fat:6, fiber:0, sugar:9, sodium:90 },
+    { id:"greek-yogurt", name:"Greek Yogurt (plain)", serving:"1 cup (200g)", calories:130, protein:20, carbs:8, fat:1, fiber:0, sugar:8, sodium:75 },
+    { id:"banana", name:"Banana", serving:"1 medium", calories:105, protein:1.3, carbs:27, fat:0.4, fiber:3.1, sugar:14, sodium:1 },
+    { id:"apple", name:"Apple", serving:"1 medium", calories:95, protein:0.5, carbs:25, fat:0.3, fiber:4, sugar:19, sodium:2 },
+    { id:"orange", name:"Orange", serving:"1 medium", calories:62, protein:1.2, carbs:15, fat:0.2, fiber:3, sugar:12, sodium:0 },
+    { id:"mango", name:"Mango", serving:"1 cup (165g)", calories:99, protein:1.4, carbs:25, fat:0.6, fiber:2.6, sugar:23, sodium:2 },
+    { id:"musk-melon", name:"Musk Melon", serving:"1 cup (160g)", calories:54, protein:1.3, carbs:13, fat:0.3, fiber:1.4, sugar:13, sodium:25 },
+    { id:"ice-apple", name:"Ice Apple (Nungu)", serving:"2 pieces", calories:43, protein:0.9, carbs:11, fat:0.1, fiber:1, sugar:8, sodium:1 },
+    { id:"watermelon", name:"Watermelon", serving:"1 cup (150g)", calories:46, protein:0.9, carbs:11, fat:0.2, fiber:0.6, sugar:9, sodium:2 },
+    { id:"grapes", name:"Grapes", serving:"1 cup (150g)", calories:104, protein:1.1, carbs:27, fat:0.2, fiber:1.4, sugar:23, sodium:3 },
+    { id:"chicken-breast", name:"Chicken Breast (grilled)", serving:"100g", calories:165, protein:31, carbs:0, fat:3.6, fiber:0, sugar:0, sodium:74 },
+    { id:"chicken-curry", name:"Chicken Curry", serving:"1 cup (200g)", calories:300, protein:25, carbs:8, fat:18, fiber:2, sugar:4, sodium:600 },
+    { id:"chicken-tikka", name:"Chicken Tikka", serving:"100g", calories:180, protein:28, carbs:2, fat:7, fiber:0, sugar:1, sodium:380 },
+    { id:"fish-fillet", name:"Fish Fillet (grilled)", serving:"100g", calories:140, protein:24, carbs:0, fat:4, fiber:0, sugar:0, sodium:60 },
+    { id:"salmon", name:"Salmon (grilled)", serving:"100g", calories:208, protein:22, carbs:0, fat:13, fiber:0, sugar:0, sodium:59 },
+    { id:"whey-protein", name:"Whey Protein", serving:"1 scoop (30g)", calories:120, protein:24, carbs:3, fat:1.5, fiber:0, sugar:2, sodium:50 },
+    { id:"oats", name:"Oats (cooked)", serving:"1 cup (240g)", calories:160, protein:6, carbs:28, fat:3, fiber:4, sugar:1, sodium:9 },
+    { id:"quinoa", name:"Quinoa (cooked)", serving:"1 cup (185g)", calories:222, protein:8, carbs:39, fat:4, fiber:5, sugar:2, sodium:13 },
+    { id:"bread", name:"Whole Wheat Bread", serving:"1 slice (28g)", calories:80, protein:4, carbs:14, fat:1, fiber:2, sugar:1, sodium:140 },
+    { id:"pasta", name:"Pasta (cooked)", serving:"1 cup (140g)", calories:200, protein:7, carbs:42, fat:1, fiber:2, sugar:1, sodium:1 },
+    { id:"almonds", name:"Almonds", serving:"1 oz (28g)", calories:164, protein:6, carbs:6, fat:14, fiber:3.5, sugar:1.2, sodium:0 },
+    { id:"cashews", name:"Cashews", serving:"1 oz (28g)", calories:157, protein:5, carbs:9, fat:12, fiber:0.9, sugar:1.7, sodium:3 },
+    { id:"peanut-butter", name:"Peanut Butter", serving:"2 tbsp (32g)", calories:188, protein:8, carbs:7, fat:16, fiber:2, sugar:3, sodium:152 },
+    { id:"milk-whole", name:"Whole Milk", serving:"1 cup (240ml)", calories:149, protein:8, carbs:12, fat:8, fiber:0, sugar:12, sodium:105 },
+    { id:"milk-skim", name:"Skim Milk", serving:"1 cup (240ml)", calories:83, protein:8, carbs:12, fat:0.2, fiber:0, sugar:12, sodium:103 },
+    { id:"coffee-black", name:"Coffee (black)", serving:"1 cup", calories:2, protein:0.3, carbs:0, fat:0, fiber:0, sugar:0, sodium:5 },
+    { id:"tea-milk", name:"Tea with Milk & Sugar", serving:"1 cup", calories:75, protein:2, carbs:12, fat:2, fiber:0, sugar:10, sodium:30 },
+    { id:"avocado", name:"Avocado", serving:"1/2 medium", calories:160, protein:2, carbs:9, fat:15, fiber:7, sugar:0.7, sodium:7 },
+    { id:"sweet-potato", name:"Sweet Potato (baked)", serving:"1 medium", calories:103, protein:2.3, carbs:24, fat:0.2, fiber:3.8, sugar:7.4, sodium:41 },
+    { id:"broccoli", name:"Broccoli (steamed)", serving:"1 cup (156g)", calories:55, protein:3.7, carbs:11, fat:0.6, fiber:5.1, sugar:2.2, sodium:64 }
+  ];
+
+  const mockProvider = {
+    id: "mock",
+    name: "Local Database",
+    builtIn: true,
+    async search(query, _cfg, customFoods) {
+      const q = (query || "").toLowerCase().trim();
+      if (!q) return [];
+      const all = [...MOCK_FOODS, ...(customFoods || [])];
+      // Score by match quality
+      const scored = all.map(f => {
+        const n = f.name.toLowerCase();
+        let score = 0;
+        if (n.startsWith(q)) score += 10;
+        if (n.includes(q)) score += 5;
+        const words = q.split(/\s+/);
+        words.forEach(w => { if (w && n.includes(w)) score += 2; });
+        return { f, score };
+      }).filter(x => x.score > 0)
+        .sort((a,b) => b.score - a.score)
+        .slice(0, 15)
+        .map(x => x.f);
+      return scored;
+    }
+  };
+
+  const usdaProvider = {
+    id: "usda",
+    name: "USDA FoodData Central",
+    needsConfig: true,
+    fields: [{ key: "apiKey", label: "API Key", placeholder: "DEMO_KEY or your key" }],
+    async search(query, cfg) {
+      const apiKey = (cfg && cfg.apiKey) || "DEMO_KEY";
+      const url = "https://api.nal.usda.gov/fdc/v1/foods/search?api_key=" + encodeURIComponent(apiKey) + "&query=" + encodeURIComponent(query) + "&pageSize=15";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("USDA API error " + r.status);
+      const data = await r.json();
+      const getN = (food, id) => {
+        const n = (food.foodNutrients || []).find(x => x.nutrientId === id || x.nutrientNumber == id);
+        return n ? (n.value || 0) : 0;
+      };
+      return (data.foods || []).map(f => ({
+        id: "usda-" + f.fdcId,
+        name: f.description,
+        serving: f.servingSize ? (f.servingSize + (f.servingSizeUnit || "g")) : "100g",
+        calories: getN(f, 1008),
+        protein: getN(f, 1003),
+        carbs: getN(f, 1005),
+        fat: getN(f, 1004),
+        fiber: getN(f, 1079),
+        sugar: getN(f, 2000),
+        sodium: getN(f, 1093)
+      }));
+    }
+  };
+
+  // Stubs - structured so anyone can fill in fetch logic
+  const nutritionixProvider = {
+    id: "nutritionix",
+    name: "Nutritionix",
+    needsConfig: true,
+    fields: [
+      { key: "appId", label: "App ID", placeholder: "x-app-id" },
+      { key: "appKey", label: "App Key", placeholder: "x-app-key" }
+    ],
+    async search(query, cfg) {
+      if (!cfg || !cfg.appId || !cfg.appKey) throw new Error("Nutritionix needs App ID & Key");
+      const r = await fetch("https://trackapi.nutritionix.com/v2/natural/nutrients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-app-id": cfg.appId,
+          "x-app-key": cfg.appKey
+        },
+        body: JSON.stringify({ query })
+      });
+      if (!r.ok) throw new Error("Nutritionix API error " + r.status);
+      const data = await r.json();
+      return (data.foods || []).map(f => ({
+        id: "nx-" + (f.tag_id || f.food_name || uid()),
+        name: f.food_name,
+        serving: (f.serving_qty || 1) + " " + (f.serving_unit || "serving"),
+        calories: f.nf_calories || 0,
+        protein: f.nf_protein || 0,
+        carbs: f.nf_total_carbohydrate || 0,
+        fat: f.nf_total_fat || 0,
+        fiber: f.nf_dietary_fiber || 0,
+        sugar: f.nf_sugars || 0,
+        sodium: f.nf_sodium || 0
+      }));
+    }
+  };
+
+  const edamamProvider = {
+    id: "edamam",
+    name: "Edamam",
+    needsConfig: true,
+    fields: [
+      { key: "appId", label: "App ID", placeholder: "app_id" },
+      { key: "appKey", label: "App Key", placeholder: "app_key" }
+    ],
+    async search(query, cfg) {
+      if (!cfg || !cfg.appId || !cfg.appKey) throw new Error("Edamam needs App ID & Key");
+      const url = "https://api.edamam.com/api/food-database/v2/parser?app_id=" + encodeURIComponent(cfg.appId) + "&app_key=" + encodeURIComponent(cfg.appKey) + "&ingr=" + encodeURIComponent(query) + "&nutrition-type=cooking";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("Edamam API error " + r.status);
+      const data = await r.json();
+      return (data.hints || []).slice(0, 15).map(hit => {
+        const f = hit.food;
+        const n = f.nutrients || {};
+        return {
+          id: "ed-" + f.foodId,
+          name: f.label,
+          serving: "100g",
+          calories: n.ENERC_KCAL || 0,
+          protein: n.PROCNT || 0,
+          carbs: n.CHOCDF || 0,
+          fat: n.FAT || 0,
+          fiber: n.FIBTG || 0
+        };
+      });
+    }
+  };
+
+  const PROVIDERS = {
+    mock: mockProvider,
+    usda: usdaProvider,
+    nutritionix: nutritionixProvider,
+    edamam: edamamProvider
+  };
+
+  /* ---------- Cardio MET table ---------- */
+  const CARDIO_PRESETS = [
+    { name: "Walking", met: 3.5 },
+    { name: "Jogging", met: 7 },
+    { name: "Running", met: 10 },
+    { name: "Cycling", met: 7.5 },
+    { name: "Swimming", met: 8 },
+    { name: "Elliptical", met: 5 },
+    { name: "Rowing", met: 7 },
+    { name: "HIIT", met: 9 },
+    { name: "Yoga", met: 3 },
+    { name: "Hiking", met: 6 }
+  ];
+  function cardioCalories(w, weightKg) {
+    const met = w.met || 6;
+    return Math.round(met * weightKg * (w.minutes / 60));
+  }
+  function strengthCalories(w, weightKg) {
+    const sets = w.sets || [];
+    if (!sets.length) return 0;
+    const totalSets = sets.length;
+    const totalReps = sets.reduce((s,x) => s + (Number(x.reps)||0), 0);
+    const totalVol = sets.reduce((s,x) => s + (Number(x.reps)||0)*(Number(x.weight)||0), 0);
+    return Math.max(15, Math.round(totalSets*5 + totalReps*0.5 + totalVol*0.04));
+  }
+
+  /* ---------- Day data helpers ---------- */
+  function ensureDay(days, key) {
+    if (!days[key]) {
+      days[key] = { meals: [], workouts: [], weightKg: null };
+    }
+    return days[key];
+  }
+  function dayTotals(day) {
+    const t = { calories:0, protein:0, carbs:0, fat:0, fiber:0, sugar:0, sodium:0 };
+    if (!day) return t;
+    (day.meals || []).forEach(m => {
+      const q = m.qty || 1;
+      t.calories += (m.calories||0)*q;
+      t.protein += (m.protein||0)*q;
+      t.carbs += (m.carbs||0)*q;
+      t.fat += (m.fat||0)*q;
+      t.fiber += (m.fiber||0)*q;
+      t.sugar += (m.sugar||0)*q;
+      t.sodium += (m.sodium||0)*q;
+    });
+    Object.keys(t).forEach(k => t[k] = Math.round(t[k] * 10) / 10);
+    return t;
+  }
+  function dayBurn(day) {
+    if (!day) return 0;
+    return (day.workouts || []).reduce((s,w) => s + (w.calories||0), 0);
+  }
+
+  /* ---------- Icons (inline SVG) ---------- */
+  const ICONS = {
+    home: '<path d="M3 9.5L12 3l9 6.5V21a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1V9.5z"/>',
+    meal: '<path d="M4 4v8a4 4 0 008 0V4M8 4v8M16 4v6c0 1.5 1 3 2.5 3V21M4 21h16"/>',
+    workout: '<path d="M6 8v8M18 8v8M2 10v4M22 10v4M6 12h12"/>',
+    history: '<path d="M3 12a9 9 0 109-9 9.7 9.7 0 00-7 3L3 8M3 3v5h5M12 7v5l3 2"/>',
+    user: '<path d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M20 8v6M23 11h-6"/><circle cx="10" cy="7" r="4"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    close: '<path d="M18 6L6 18M6 6l12 12"/>',
+    chevron: '<path d="M9 18l6-6-6-6"/>',
+    chevronL: '<path d="M15 18l-6-6 6-6"/>',
+    trash: '<path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',
+    edit: '<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+    download: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    upload: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+    refresh: '<path d="M3 12a9 9 0 0115.5-6.3L21 8M21 3v5h-5M21 12a9 9 0 01-15.5 6.3L3 16M3 21v-5h5"/>',
+    weight: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M8 12h.01M12 12h.01M16 12h.01"/>',
+    flame: '<path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 01-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/>',
+    target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
+  };
+  function Icon(name, size) {
+    size = size || 22;
+    return h("svg", {
+      width: size, height: size, viewBox: "0 0 24 24",
+      fill: "none", stroke: "currentColor", strokeWidth: 2,
+      strokeLinecap: "round", strokeLinejoin: "round",
+      dangerouslySetInnerHTML: { __html: ICONS[name] || "" }
+    });
+  }
+
+  /* ---------- Toast ---------- */
+  const ToastCtx = React.createContext(null);
+  function ToastProvider({ children }) {
+    const [msg, setMsg] = useState(null);
+    const tref = useRef();
+    const show = useCallback((m) => {
+      setMsg(m);
+      clearTimeout(tref.current);
+      tref.current = setTimeout(() => setMsg(null), 2400);
+    }, []);
+    return h(ToastCtx.Provider, { value: show },
+      children,
+      msg && h("div", { className: "toast show" }, msg)
+    );
+  }
+  const useToast = () => React.useContext(ToastCtx);
+
+  /* ---------- Sheet ---------- */
+  function Sheet({ open, onClose, title, children }) {
+    useEffect(() => {
+      if (!open) return;
+      const onKey = (e) => { if (e.key === "Escape") onClose(); };
+      window.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+      return () => {
+        window.removeEventListener("keydown", onKey);
+        document.body.style.overflow = "";
+      };
+    }, [open, onClose]);
+    return h(React.Fragment, null,
+      h("div", { className: "sheet-bg" + (open ? " open" : ""), onClick: onClose }),
+      h("div", { className: "sheet" + (open ? " open" : ""), onClick: (e) => e.stopPropagation() },
+        h("div", { className: "sheet-handle" }),
+        h("div", { className: "sheet-header" },
+          h("h2", null, title || ""),
+          h("button", { className: "sheet-close", onClick: onClose, "aria-label": "Close" }, Icon("close", 18))
+        ),
+        children
+      )
+    );
+  }
+
+  /* ---------- Dashboard ---------- */
+  function MacroRing({ consumed, target }) {
+    const pct = Math.min(100, target ? (consumed/target)*100 : 0);
+    const size = 160, stroke = 14, r = (size - stroke) / 2;
+    const c = 2 * Math.PI * r;
+    const dash = (pct/100) * c;
+    return h("div", { className: "macro-ring", style: { width: size, height: size } },
+      h("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size, style: { transform: "rotate(-90deg)" } },
+        h("circle", { cx: size/2, cy: size/2, r, stroke: "#e5e7eb", strokeWidth: stroke, fill: "none" }),
+        h("circle", { cx: size/2, cy: size/2, r, stroke: "#4f46e5", strokeWidth: stroke, fill: "none", strokeDasharray: c, strokeDashoffset: c - dash, strokeLinecap: "round", style: { transition: "stroke-dashoffset 0.5s" } })
+      ),
+      h("div", { className: "center" },
+        h("div", { className: "big" }, Math.round(consumed)),
+        h("div", { className: "sub" }, "of " + Math.round(target) + " kcal"),
+        h("div", { className: "sub", style: { marginTop: 2 } }, Math.max(0, Math.round(target - consumed)) + " left")
+      )
+    );
+  }
+
+  function Dashboard({ data, setData, activeDate, setActiveDate, openWeightSheet }) {
+    const targets = useMemo(() => computeTargets(data.profile), [data.profile]);
+    const day = data.days[activeDate];
+    const totals = useMemo(() => dayTotals(day), [day]);
+    const burn = dayBurn(day);
+    const weightTrend = useMemo(() => {
+      const log = (data.weightLog || []).slice(-14);
+      return log;
+    }, [data.weightLog]);
+
+    return h("div", null,
+      h("div", { className: "header" },
+        h("div", null,
+          h("h1", null, greeting() + ", Chinmay"),
+          h("div", { className: "sub" }, fmtDate(activeDate) + " - " + bmiCategory(targets.bmi))
+        )
+      ),
+
+      // Date nav
+      h("div", { className: "date-nav" },
+        h("button", { className: "nav-btn", onClick: () => setActiveDate(shift(activeDate, -1)), "aria-label": "Previous day" }, Icon("chevronL", 18)),
+        h("div", { className: "date" }, fmtDate(activeDate)),
+        h("button", { className: "nav-btn", onClick: () => setActiveDate(shift(activeDate, 1)), "aria-label": "Next day", disabled: activeDate >= todayKey() }, Icon("chevron", 18))
+      ),
+
+      // Main card with calories ring and macros
+      h("div", { className: "card" },
+        h("h2", null, "Calories"),
+        h("div", { className: "macro-ring-wrap" },
+          h(MacroRing, { consumed: totals.calories, target: targets.calories })
+        ),
+        h("div", { className: "macro-grid" },
+          macroCell("Protein", totals.protein, targets.protein, "g", "protein"),
+          macroCell("Carbs", totals.carbs, targets.carbs, "g", "carbs"),
+          macroCell("Fat", totals.fat, targets.fat, "g", "fat")
+        )
+      ),
+
+      // Quick stats
+      h("div", { className: "qstats", style: { marginBottom: 12 } },
+        h("div", { className: "qstat" },
+          h("div", { className: "l" }, "Burned"),
+          h("div", { className: "v" }, burn),
+          h("div", { className: "delta pos" }, "kcal today")
+        ),
+        h("div", { className: "qstat" },
+          h("div", { className: "l" }, "Net"),
+          h("div", { className: "v" }, Math.round(totals.calories - burn)),
+          h("div", { className: "delta " + (totals.calories - burn <= targets.calories ? "pos" : "neg") },
+            Math.abs(targets.calories - (totals.calories - burn)) + " " + ((totals.calories - burn) <= targets.calories ? "below" : "over"))
+        ),
+        h("div", { className: "qstat" },
+          h("div", { className: "l" }, "Workouts"),
+          h("div", { className: "v" }, (day && day.workouts || []).length),
+          h("div", { className: "delta" }, "sessions")
+        )
+      ),
+
+      // Protein progress (emphasized for muscle goal)
+      h("div", { className: "card" },
+        h("h2", null, "Protein for muscle"),
+        h("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between" } },
+          h("div", { style: { fontSize: 28, fontWeight: 700 } }, Math.round(totals.protein) + "g"),
+          h("div", { className: "pill " + (totals.protein >= targets.protein ? "pos" : "") },
+            Math.round((totals.protein / targets.protein) * 100) + "% of " + targets.protein + "g target")
+        ),
+        h("div", { className: "pbar protein" }, h("div", { style: { width: Math.min(100, (totals.protein/targets.protein)*100) + "%" } })),
+        h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 8 } },
+          totals.protein >= targets.protein
+            ? "Target hit. Excellent for muscle protein synthesis."
+            : "Need " + Math.max(0, Math.round(targets.protein - totals.protein)) + "g more today."
+        )
+      ),
+
+      // Weight trend
+      h("div", { className: "card" },
+        h("h2", null, "Weight trend"),
+        weightTrend.length >= 2
+          ? h(WeightTrendChart, { log: weightTrend })
+          : h("div", { style: { fontSize: 13, color: "var(--muted)", padding: "8px 0" } },
+              "Log your weight regularly to see the trend."),
+        h("div", { className: "trend-stats" },
+          h("div", null, "Current: ", h("b", null, data.profile.weightKg + " kg")),
+          weightTrend.length >= 2 && h("div", null, "Δ 14d: ",
+            h("b", { style: { color: weightTrend[weightTrend.length-1].kg - weightTrend[0].kg >= 0 ? "var(--success)" : "var(--warning)" } },
+              (weightTrend[weightTrend.length-1].kg - weightTrend[0].kg >= 0 ? "+" : "")
+              + (weightTrend[weightTrend.length-1].kg - weightTrend[0].kg).toFixed(1) + " kg"))
+        ),
+        h("button", { className: "btn secondary", onClick: openWeightSheet, style: { marginTop: 8 } },
+          Icon("weight", 18), h("span", { style: { marginLeft: 6 } }, "Log weight"))
+      ),
+
+      // Today's workout summary
+      day && day.workouts && day.workouts.length > 0 && h("div", { className: "card" },
+        h("h2", null, "Today's workouts"),
+        day.workouts.map(w =>
+          h("div", { key: w.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border-soft)" } },
+            h("div", null,
+              h("div", { style: { fontWeight: 500 } }, w.name),
+              h("div", { style: { fontSize: 12, color: "var(--muted)" } },
+                w.type === "strength"
+                  ? ((w.sets || []).length + " sets")
+                  : (w.minutes + " min" + (w.distanceKm ? " · " + w.distanceKm + " km" : "")))
+            ),
+            h("div", { style: { fontSize: 13, fontWeight: 600 } }, w.calories + " kcal")
+          )
+        )
+      )
+    );
+  }
+
+  function greeting() {
+    const hr = new Date().getHours();
+    if (hr < 12) return "Good morning";
+    if (hr < 17) return "Good afternoon";
+    return "Good evening";
+  }
+
+  function macroCell(label, val, target, unit, cls) {
+    const pct = target ? Math.min(100, (val/target)*100) : 0;
+    return h("div", { className: "macro-cell", key: label },
+      h("div", { className: "l" }, label),
+      h("div", { className: "v" }, Math.round(val) + unit),
+      h("div", { className: "t" }, "of " + Math.round(target) + unit),
+      h("div", { className: "pbar " + cls }, h("div", { style: { width: pct + "%" } }))
+    );
+  }
+
+  function WeightTrendChart({ log }) {
+    const w = 320, ht = 80, pad = 8;
+    const vals = log.map(l => l.kg);
+    const minV = Math.min(...vals) - 0.5;
+    const maxV = Math.max(...vals) + 0.5;
+    const range = maxV - minV || 1;
+    const pts = log.map((l, i) => {
+      const x = pad + (i / Math.max(1, log.length - 1)) * (w - pad*2);
+      const y = ht - pad - ((l.kg - minV) / range) * (ht - pad*2);
+      return [x, y];
+    });
+    const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+    return h("div", { className: "trend" },
+      h("svg", { viewBox: "0 0 " + w + " " + ht, preserveAspectRatio: "none" },
+        h("path", { d: d + " L" + pts[pts.length-1][0] + "," + (ht-pad) + " L" + pad + "," + (ht-pad) + " Z", fill: "rgba(79,70,229,0.1)" }),
+        h("path", { d, stroke: "#4f46e5", strokeWidth: 2, fill: "none", strokeLinecap: "round", strokeLinejoin: "round" }),
+        pts.map((p, i) => h("circle", { key: i, cx: p[0], cy: p[1], r: 2.5, fill: "#4f46e5" }))
+      )
+    );
+  }
+
+  /* ---------- Meals ---------- */
+  const MEAL_SLOTS = [
+    { id: "breakfast", name: "Breakfast", emoji: "🌅" },
+    { id: "lunch", name: "Lunch", emoji: "🍽️" },
+    { id: "dinner", name: "Dinner", emoji: "🌙" },
+    { id: "snacks", name: "Snacks", emoji: "🥪" }
+  ];
+
+  function MealsTab({ data, setData, activeDate, setActiveDate, openAddMeal }) {
+    const day = data.days[activeDate] || { meals: [], workouts: [] };
+    const totals = dayTotals(day);
+    const targets = computeTargets(data.profile);
+
+    return h("div", null,
+      h("div", { className: "header" },
+        h("div", null,
+          h("h1", null, "Meals"),
+          h("div", { className: "sub" }, Math.round(totals.calories) + " of " + targets.calories + " kcal")
+        )
+      ),
+      h("div", { className: "date-nav" },
+        h("button", { className: "nav-btn", onClick: () => setActiveDate(shift(activeDate, -1)) }, Icon("chevronL", 18)),
+        h("div", { className: "date" }, fmtDate(activeDate)),
+        h("button", { className: "nav-btn", onClick: () => setActiveDate(shift(activeDate, 1)), disabled: activeDate >= todayKey() }, Icon("chevron", 18))
+      ),
+      MEAL_SLOTS.map(slot => {
+        const items = (day.meals || []).filter(m => m.slot === slot.id);
+        const slotTotals = items.reduce((s, m) => {
+          const q = m.qty || 1;
+          return { cal: s.cal + (m.calories||0)*q, p: s.p + (m.protein||0)*q };
+        }, { cal: 0, p: 0 });
+        return h("div", { key: slot.id, className: "meal-block" },
+          h("div", { className: "meal-head" },
+            h("div", null,
+              h("div", { className: "t" }, slot.emoji + " " + slot.name),
+              h("div", { className: "s" },
+                items.length > 0
+                  ? Math.round(slotTotals.cal) + " kcal · " + Math.round(slotTotals.p) + "g protein"
+                  : "Nothing logged"
+              )
+            ),
+            h("button", { className: "add-btn", onClick: () => openAddMeal(slot.id), "aria-label": "Add to " + slot.name }, "+")
+          ),
+          items.length === 0
+            ? null
+            : items.map(item => h(FoodRow, {
+                key: item.id,
+                item,
+                onDelete: () => {
+                  const next = { ...data };
+                  const d = ensureDay(next.days, activeDate);
+                  d.meals = d.meals.filter(m => m.id !== item.id);
+                  setData(next);
+                },
+                onEdit: (updated) => {
+                  const next = { ...data };
+                  const d = ensureDay(next.days, activeDate);
+                  d.meals = d.meals.map(m => m.id === item.id ? { ...m, ...updated } : m);
+                  setData(next);
+                }
+              }))
+        );
+      })
+    );
+  }
+
+  function FoodRow({ item, onDelete, onEdit }) {
+    const [editing, setEditing] = useState(false);
+    const q = item.qty || 1;
+    return h("div", null,
+      h("div", { className: "food-row" },
+        h("div", { style: { flex: 1, minWidth: 0 } },
+          h("div", { className: "nm" }, item.name),
+          h("div", { className: "sv" }, (q !== 1 ? q + "× " : "") + (item.serving || ""))
+        ),
+        h("div", { className: "right" },
+          h("div", { className: "cal" }, Math.round((item.calories||0)*q) + " kcal"),
+          h("div", { className: "mc" },
+            "P" + Math.round((item.protein||0)*q) + " · C" + Math.round((item.carbs||0)*q) + " · F" + Math.round((item.fat||0)*q))
+        ),
+        h("div", { className: "actions" },
+          h("button", { className: "icon-btn-sm", onClick: () => setEditing(!editing), "aria-label": "Edit" }, Icon("edit", 16)),
+          h("button", { className: "icon-btn-sm danger", onClick: () => { if (confirm("Remove item?")) onDelete(); }, "aria-label": "Delete" }, Icon("trash", 16))
+        )
+      ),
+      editing && h(EditFoodForm, { item, onSave: (u) => { onEdit(u); setEditing(false); }, onCancel: () => setEditing(false) })
+    );
+  }
+
+  function EditFoodForm({ item, onSave, onCancel }) {
+    const [v, setV] = useState({
+      qty: item.qty || 1,
+      calories: item.calories || 0,
+      protein: item.protein || 0,
+      carbs: item.carbs || 0,
+      fat: item.fat || 0,
+      fiber: item.fiber || 0,
+      sugar: item.sugar || 0,
+      sodium: item.sodium || 0,
+      serving: item.serving || ""
+    });
+    const onN = (k) => (e) => setV(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
+    return h("div", { style: { padding: "0 14px 14px", background: "var(--bg)", borderTop: "1px solid var(--border-soft)" } },
+      h("div", { className: "field-row", style: { marginTop: 10 } },
+        h("div", null, h("label", null, "Servings"),
+          h("input", { className: "input", type: "number", step: "0.25", value: v.qty, onChange: onN("qty") })),
+        h("div", null, h("label", null, "Serving"),
+          h("input", { className: "input", value: v.serving, onChange: (e) => setV(s => ({ ...s, serving: e.target.value })) }))
+      ),
+      h("div", { className: "field-row", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Calories"),
+          h("input", { className: "input", type: "number", value: v.calories, onChange: onN("calories") })),
+        h("div", null, h("label", null, "Protein (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.protein, onChange: onN("protein") }))
+      ),
+      h("div", { className: "field-row", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Carbs (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.carbs, onChange: onN("carbs") })),
+        h("div", null, h("label", null, "Fat (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.fat, onChange: onN("fat") }))
+      ),
+      h("div", { className: "field-row3", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Fiber (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.fiber, onChange: onN("fiber") })),
+        h("div", null, h("label", null, "Sugar (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.sugar, onChange: onN("sugar") })),
+        h("div", null, h("label", null, "Sodium (mg)"),
+          h("input", { className: "input", type: "number", value: v.sodium, onChange: onN("sodium") }))
+      ),
+      h("div", { className: "btn-row", style: { marginTop: 10 } },
+        h("button", { className: "btn secondary", onClick: onCancel }, "Cancel"),
+        h("button", { className: "btn", onClick: () => onSave(Object.fromEntries(Object.entries(v).map(([k,val]) => [k, val === "" ? 0 : val]))) }, "Save")
+      )
+    );
+  }
+
+  /* ---------- Add Meal sheet ---------- */
+  function AddMealSheet({ open, onClose, data, setData, activeDate, slot }) {
+    const [query, setQuery] = useState("");
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [err, setErr] = useState(null);
+    const [mode, setMode] = useState("search"); // search | manual
+    const toast = useToast();
+    const inputRef = useRef();
+
+    useEffect(() => {
+      if (open) {
+        setQuery("");
+        setResults([]);
+        setErr(null);
+        setMode("search");
+        setTimeout(() => { try { inputRef.current && inputRef.current.focus(); } catch(e) {} }, 320);
+      }
+    }, [open]);
+
+    useEffect(() => {
+      if (!open) return;
+      let cancelled = false;
+      const q = query.trim();
+      if (q.length < 1) { setResults([]); return; }
+      setLoading(true);
+      setErr(null);
+      const provId = data.providers.active;
+      const prov = PROVIDERS[provId];
+      const cfg = data.providers[provId];
+      const t = setTimeout(async () => {
+        try {
+          let res;
+          if (prov.id === "mock") {
+            res = await prov.search(q, null, data.customFoods);
+          } else {
+            res = await prov.search(q, cfg);
+          }
+          if (!cancelled) setResults(res || []);
+        } catch(e) {
+          if (!cancelled) { setErr(e.message || "Search failed"); setResults([]); }
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      }, 200);
+      return () => { cancelled = true; clearTimeout(t); };
+    }, [query, open, data.providers, data.customFoods]);
+
+    const pick = (food) => {
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      d.meals.push({
+        id: uid(),
+        slot: slot || "snacks",
+        time: Date.now(),
+        qty: 1,
+        ...food
+      });
+      setData(next);
+      toast("Added " + food.name);
+      onClose();
+    };
+
+    const slotName = (MEAL_SLOTS.find(s => s.id === slot) || {}).name || "meal";
+
+    return h(Sheet, { open, onClose, title: "Add to " + slotName },
+      h("div", { className: "seg" },
+        h("button", { className: mode === "search" ? "active" : "", onClick: () => setMode("search") }, "Search"),
+        h("button", { className: mode === "manual" ? "active" : "", onClick: () => setMode("manual") }, "Manual entry")
+      ),
+      mode === "search" ? h(React.Fragment, null,
+        h("div", { className: "field" },
+          h("input", {
+            ref: inputRef,
+            className: "input",
+            placeholder: "Search foods (e.g. jowar bhakri, eggs, banana)",
+            value: query,
+            onChange: (e) => setQuery(e.target.value),
+            autoComplete: "off",
+            autoCapitalize: "none"
+          })
+        ),
+        h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 8 } },
+          "Source: " + PROVIDERS[data.providers.active].name +
+          (data.providers.active === "mock" ? " · works offline" : "")
+        ),
+        loading && h("div", { style: { padding: 20, textAlign: "center", color: "var(--muted)" } }, "Searching..."),
+        err && h("div", { style: { padding: 12, background: "var(--danger-soft)", color: "var(--danger)", borderRadius: 10, fontSize: 13 } }, err),
+        !loading && !err && query.length > 0 && results.length === 0 && h("div", { style: { padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 } },
+          "No matches. Try \"manual entry\" to add it yourself."),
+        h("div", { className: "search-list" },
+          results.map(r => h("div", { key: r.id, className: "search-item", onClick: () => pick(r) },
+            h("div", { style: { flex: 1, minWidth: 0 } },
+              h("div", { className: "nm" }, r.name),
+              h("div", { className: "sv" }, r.serving + " · P" + Math.round(r.protein||0) + " C" + Math.round(r.carbs||0) + " F" + Math.round(r.fat||0))
+            ),
+            h("div", { className: "cal" }, Math.round(r.calories||0) + " kcal")
+          ))
+        )
+      ) : h(ManualFoodEntry, { onAdd: pick, onSaveCustom: (food) => {
+        const next = { ...data, customFoods: [...(data.customFoods || []), { ...food, id: "custom-" + uid() }] };
+        setData(next);
+        toast("Saved to your foods");
+      } })
+    );
+  }
+
+  function ManualFoodEntry({ onAdd, onSaveCustom }) {
+    const [v, setV] = useState({
+      name: "", serving: "1 serving", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0
+    });
+    const onN = (k) => (e) => setV(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
+    const valid = v.name.trim().length > 0;
+    return h("div", null,
+      h("div", { className: "field" },
+        h("label", null, "Name"),
+        h("input", { className: "input", value: v.name, onChange: (e) => setV(s => ({ ...s, name: e.target.value })), placeholder: "e.g. Mom's biryani" })
+      ),
+      h("div", { className: "field" },
+        h("label", null, "Serving"),
+        h("input", { className: "input", value: v.serving, onChange: (e) => setV(s => ({ ...s, serving: e.target.value })) })
+      ),
+      h("div", { className: "field-row" },
+        h("div", null, h("label", null, "Calories"),
+          h("input", { className: "input", type: "number", value: v.calories, onChange: onN("calories") })),
+        h("div", null, h("label", null, "Protein (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.protein, onChange: onN("protein") }))
+      ),
+      h("div", { className: "field-row", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Carbs (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.carbs, onChange: onN("carbs") })),
+        h("div", null, h("label", null, "Fat (g)"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.fat, onChange: onN("fat") }))
+      ),
+      h("div", { className: "field-row3", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Fiber"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.fiber, onChange: onN("fiber") })),
+        h("div", null, h("label", null, "Sugar"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.sugar, onChange: onN("sugar") })),
+        h("div", null, h("label", null, "Sodium"),
+          h("input", { className: "input", type: "number", value: v.sodium, onChange: onN("sodium") }))
+      ),
+      h("div", { className: "btn-row", style: { marginTop: 14 } },
+        h("button", { className: "btn secondary", disabled: !valid, onClick: () => onSaveCustom({ ...v, calories: Number(v.calories)||0 }) }, "Save & log later"),
+        h("button", { className: "btn", disabled: !valid, onClick: () => onAdd({ id: "manual-" + uid(), ...v, calories: Number(v.calories)||0 }) }, "Add to meal")
+      )
+    );
+  }
+
+  /* ---------- Workouts ---------- */
+  function WorkoutsTab({ data, setData, activeDate, setActiveDate, openAddWorkout }) {
+    const day = data.days[activeDate] || { workouts: [] };
+    const burn = dayBurn(day);
+    const wOut = day.workouts || [];
+
+    const updateWorkout = (id, patch) => {
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      d.workouts = d.workouts.map(w => {
+        if (w.id !== id) return w;
+        const merged = { ...w, ...patch };
+        if (merged.type === "strength") merged.calories = strengthCalories(merged, next.profile.weightKg);
+        else merged.calories = cardioCalories(merged, next.profile.weightKg);
+        return merged;
+      });
+      setData(next);
+    };
+    const removeWorkout = (id) => {
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      d.workouts = d.workouts.filter(w => w.id !== id);
+      setData(next);
+    };
+
+    return h("div", null,
+      h("div", { className: "header" },
+        h("div", null,
+          h("h1", null, "Workouts"),
+          h("div", { className: "sub" }, wOut.length + " session" + (wOut.length !== 1 ? "s" : "") + " · " + burn + " kcal burned")
+        )
+      ),
+      h("div", { className: "date-nav" },
+        h("button", { className: "nav-btn", onClick: () => setActiveDate(shift(activeDate, -1)) }, Icon("chevronL", 18)),
+        h("div", { className: "date" }, fmtDate(activeDate)),
+        h("button", { className: "nav-btn", onClick: () => setActiveDate(shift(activeDate, 1)), disabled: activeDate >= todayKey() }, Icon("chevron", 18))
+      ),
+      wOut.length === 0 ? h("div", { className: "card empty-state" },
+        h("div", { className: "ic" }, "💪"),
+        h("div", { className: "t" }, "No workouts logged"),
+        h("div", { className: "s" }, "Tap the + button to log strength or cardio")
+      ) : null,
+      wOut.map(w => w.type === "strength"
+        ? h(StrengthCard, { key: w.id, w, prs: data.prs || {}, allDays: data.days, onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id) })
+        : h(CardioCard, { key: w.id, w, onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id) })
+      )
+    );
+  }
+
+  function isPR(exercise, weight, reps, days, currentWorkoutId) {
+    if (!weight || !reps) return false;
+    let max = 0;
+    for (const dayKey in days) {
+      const ws = days[dayKey].workouts || [];
+      for (const w of ws) {
+        if (w.type !== "strength" || w.name !== exercise || w.id === currentWorkoutId) continue;
+        for (const s of (w.sets || [])) {
+          if (s.weight && s.reps && s.weight * s.reps > max) max = s.weight * s.reps;
+        }
+      }
+    }
+    return weight * reps > max;
+  }
+
+  function StrengthCard({ w, prs, allDays, onChange, onRemove }) {
+    const setsArr = w.sets || [];
+    const updateSet = (i, patch) => {
+      const sets = setsArr.map((s, idx) => idx === i ? { ...s, ...patch } : s);
+      onChange({ sets });
+    };
+    const addSet = () => {
+      const last = setsArr[setsArr.length - 1] || { weight: 0, reps: 8 };
+      onChange({ sets: [...setsArr, { weight: last.weight, reps: last.reps, rpe: last.rpe || "" }] });
+    };
+    const removeSet = (i) => {
+      onChange({ sets: setsArr.filter((_, idx) => idx !== i) });
+    };
+
+    return h("div", { className: "workout-card" },
+      h("div", { className: "wh" },
+        h("div", { style: { flex: 1, minWidth: 0 } },
+          h("div", { className: "wn" }, w.name),
+          h("div", { className: "wt" }, h("span", { className: "badge strength" }, "Strength"), " · " + setsArr.length + " sets · " + w.calories + " kcal")
+        ),
+        h("button", { className: "icon-btn-sm danger", onClick: () => { if (confirm("Remove workout?")) onRemove(); } }, Icon("trash", 18))
+      ),
+      h("div", { className: "sets-table" },
+        h("div", { className: "hdr" },
+          h("div", null, "#"),
+          h("div", null, "Weight"),
+          h("div", null, "Reps"),
+          h("div", null, "RPE"),
+          h("div", null, "")
+        ),
+        setsArr.map((s, i) => {
+          const pr = isPR(w.name, Number(s.weight), Number(s.reps), allDays, w.id);
+          return h("div", { className: "set-row", key: i },
+            h("div", { className: "n" }, (i+1) + (pr ? " 🏆" : "")),
+            h("input", { type: "number", inputMode: "decimal", placeholder: "kg", value: s.weight ?? "", onChange: (e) => updateSet(i, { weight: e.target.value === "" ? "" : Number(e.target.value) }) }),
+            h("input", { type: "number", inputMode: "numeric", placeholder: "reps", value: s.reps ?? "", onChange: (e) => updateSet(i, { reps: e.target.value === "" ? "" : Number(e.target.value) }) }),
+            h("input", { type: "number", inputMode: "decimal", step: "0.5", placeholder: "@", value: s.rpe ?? "", onChange: (e) => updateSet(i, { rpe: e.target.value === "" ? "" : Number(e.target.value) }) }),
+            h("button", { className: "icon-btn-sm danger", onClick: () => removeSet(i) }, Icon("close", 16))
+          );
+        })
+      ),
+      h("button", { className: "add-set", onClick: addSet }, "+ Add set"),
+      h("textarea", {
+        className: "notes-input",
+        placeholder: "Notes (optional)",
+        value: w.notes || "",
+        onChange: (e) => onChange({ notes: e.target.value })
+      })
+    );
+  }
+
+  function CardioCard({ w, onChange, onRemove }) {
+    return h("div", { className: "workout-card" },
+      h("div", { className: "wh" },
+        h("div", { style: { flex: 1 } },
+          h("div", { className: "wn" }, w.name),
+          h("div", { className: "wt" }, h("span", { className: "badge cardio" }, "Cardio"), " · " + w.minutes + " min · " + w.calories + " kcal")
+        ),
+        h("button", { className: "icon-btn-sm danger", onClick: () => { if (confirm("Remove workout?")) onRemove(); } }, Icon("trash", 18))
+      ),
+      h("div", { className: "field-row", style: { marginTop: 10 } },
+        h("div", null, h("label", null, "Duration (min)"),
+          h("input", { className: "input", type: "number", inputMode: "numeric", value: w.minutes, onChange: (e) => onChange({ minutes: Number(e.target.value)||0 }) })),
+        h("div", null, h("label", null, "Distance (km)"),
+          h("input", { className: "input", type: "number", step: "0.01", inputMode: "decimal", value: w.distanceKm ?? "", placeholder: "optional", onChange: (e) => onChange({ distanceKm: e.target.value === "" ? null : Number(e.target.value) }) }))
+      ),
+      w.distanceKm && w.minutes > 0 && h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 6 } },
+        "Pace: " + ((w.minutes/w.distanceKm).toFixed(1)) + " min/km · " +
+        "Speed: " + ((w.distanceKm/(w.minutes/60)).toFixed(1)) + " km/h"),
+      h("textarea", {
+        className: "notes-input",
+        placeholder: "Notes (optional)",
+        value: w.notes || "",
+        onChange: (e) => onChange({ notes: e.target.value })
+      })
+    );
+  }
+
+  /* ---------- Add Workout Sheet ---------- */
+  function AddWorkoutSheet({ open, onClose, data, setData, activeDate }) {
+    const [type, setType] = useState("strength");
+    const [name, setName] = useState("");
+    const [minutes, setMinutes] = useState(30);
+    const [distance, setDistance] = useState("");
+    const [met, setMet] = useState(7);
+    const toast = useToast();
+
+    useEffect(() => {
+      if (open) { setName(""); setMinutes(30); setDistance(""); setMet(7); }
+    }, [open]);
+
+    const recentExercises = useMemo(() => {
+      const set = new Set();
+      const list = [];
+      const keys = Object.keys(data.days || {}).sort().reverse().slice(0, 30);
+      for (const k of keys) {
+        for (const w of (data.days[k].workouts || [])) {
+          if (w.type === "strength" && !set.has(w.name)) {
+            set.add(w.name); list.push(w.name);
+            if (list.length >= 10) return list;
+          }
+        }
+      }
+      return list;
+    }, [data.days, open]);
+
+    const submit = () => {
+      const nm = name.trim();
+      if (!nm) { toast("Enter a name"); return; }
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      let w;
+      if (type === "strength") {
+        w = { id: uid(), type: "strength", name: nm, sets: [{ weight: 0, reps: 8, rpe: "" }], notes: "", time: Date.now(), calories: 0 };
+        w.calories = strengthCalories(w, next.profile.weightKg);
+      } else {
+        w = {
+          id: uid(), type: "cardio", name: nm,
+          minutes: Number(minutes) || 30,
+          distanceKm: distance === "" ? null : Number(distance),
+          met: Number(met),
+          notes: "", time: Date.now(), calories: 0
+        };
+        w.calories = cardioCalories(w, next.profile.weightKg);
+      }
+      d.workouts.push(w);
+      setData(next);
+      toast("Workout added");
+      onClose();
+    };
+
+    return h(Sheet, { open, onClose, title: "Add workout" },
+      h("div", { className: "seg" },
+        h("button", { className: type === "strength" ? "active" : "", onClick: () => setType("strength") }, "💪 Strength"),
+        h("button", { className: type === "cardio" ? "active" : "", onClick: () => setType("cardio") }, "🏃 Cardio")
+      ),
+      h("div", { className: "field" },
+        h("label", null, type === "strength" ? "Exercise" : "Activity"),
+        h("input", {
+          className: "input",
+          value: name,
+          onChange: (e) => setName(e.target.value),
+          placeholder: type === "strength" ? "e.g. Bench Press" : "e.g. Running",
+          autoCapitalize: "words"
+        })
+      ),
+      type === "strength" && recentExercises.length > 0 && h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
+        recentExercises.map(rx => h("button", {
+          key: rx,
+          className: "pill",
+          style: { border: "none", cursor: "pointer", padding: "6px 10px" },
+          onClick: () => setName(rx)
+        }, rx))
+      ),
+      type === "cardio" && h(React.Fragment, null,
+        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
+          CARDIO_PRESETS.map(p => h("button", {
+            key: p.name,
+            className: "pill",
+            style: { border: "none", cursor: "pointer", padding: "6px 10px", background: name === p.name ? "var(--primary-soft)" : "var(--bg)", color: name === p.name ? "var(--primary)" : "var(--muted)" },
+            onClick: () => { setName(p.name); setMet(p.met); }
+          }, p.name))
+        ),
+        h("div", { className: "field-row" },
+          h("div", null, h("label", null, "Duration (min)"),
+            h("input", { className: "input", type: "number", inputMode: "numeric", value: minutes, onChange: (e) => setMinutes(Number(e.target.value)||0) })),
+          h("div", null, h("label", null, "Distance (km, optional)"),
+            h("input", { className: "input", type: "number", step: "0.01", inputMode: "decimal", value: distance, onChange: (e) => setDistance(e.target.value), placeholder: "optional" }))
+        ),
+        h("div", { className: "field", style: { marginTop: 8 } },
+          h("label", null, "Intensity (MET)"),
+          h("select", { className: "select", value: met, onChange: (e) => setMet(Number(e.target.value)) },
+            h("option", { value: 3 }, "Light (MET 3)"),
+            h("option", { value: 5 }, "Moderate (MET 5)"),
+            h("option", { value: 7 }, "Vigorous (MET 7)"),
+            h("option", { value: 9 }, "Very vigorous (MET 9)"),
+            h("option", { value: 11 }, "Maximal (MET 11)")
+          )
+        )
+      ),
+      h("button", { className: "btn", onClick: submit, style: { marginTop: 8 } }, "Add workout")
+    );
+  }
+
+  /* ---------- Weight log sheet ---------- */
+  function WeightSheet({ open, onClose, data, setData }) {
+    const [w, setW] = useState(data.profile.weightKg);
+    useEffect(() => { if (open) setW(data.profile.weightKg); }, [open]);
+    const toast = useToast();
+    const save = () => {
+      const kg = Number(w);
+      if (!kg || kg < 30 || kg > 300) { toast("Enter valid weight"); return; }
+      const next = { ...data };
+      next.profile = { ...next.profile, weightKg: kg };
+      const dateKey = todayKey();
+      const log = (next.weightLog || []).filter(x => x.date !== dateKey);
+      log.push({ date: dateKey, kg });
+      log.sort((a,b) => a.date.localeCompare(b.date));
+      next.weightLog = log;
+      setData(next);
+      toast("Weight logged");
+      onClose();
+    };
+    return h(Sheet, { open, onClose, title: "Log weight" },
+      h("div", { className: "field" },
+        h("label", null, "Weight (kg)"),
+        h("input", { className: "input", type: "number", inputMode: "decimal", step: "0.1", value: w, onChange: (e) => setW(e.target.value) })
+      ),
+      h("button", { className: "btn", onClick: save }, "Save")
+    );
+  }
+
+  /* ---------- History ---------- */
+  function HistoryTab({ data }) {
+    const targets = computeTargets(data.profile);
+    const today = todayKey();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const key = shift(today, -i);
+      const d = data.days[key];
+      const t = dayTotals(d);
+      const b = dayBurn(d);
+      days.push({ key, ...t, burn: b, net: t.calories - b });
+    }
+    const maxCal = Math.max(targets.calories * 1.1, ...days.map(d => d.calories), 100);
+
+    // 30d
+    const days30 = [];
+    for (let i = 29; i >= 0; i--) {
+      const key = shift(today, -i);
+      const d = data.days[key];
+      days30.push({ key, ...dayTotals(d), burn: dayBurn(d) });
+    }
+    const logged = days30.filter(d => d.calories > 0);
+    const avg = logged.length > 0 ? {
+      cal: Math.round(logged.reduce((s,d) => s + d.calories, 0) / logged.length),
+      p: Math.round(logged.reduce((s,d) => s + d.protein, 0) / logged.length),
+      c: Math.round(logged.reduce((s,d) => s + d.carbs, 0) / logged.length),
+      f: Math.round(logged.reduce((s,d) => s + d.fat, 0) / logged.length),
+      b: Math.round(logged.reduce((s,d) => s + d.burn, 0) / logged.length)
+    } : { cal: 0, p: 0, c: 0, f: 0, b: 0 };
+
+    // PRs
+    const prs = useMemo(() => {
+      const map = {};
+      for (const k in data.days) {
+        for (const w of (data.days[k].workouts || [])) {
+          if (w.type !== "strength") continue;
+          for (const s of (w.sets || [])) {
+            if (!s.weight || !s.reps) continue;
+            const cur = map[w.name];
+            const vol = s.weight * s.reps;
+            // 1RM Epley estimate
+            const e1rm = s.weight * (1 + s.reps/30);
+            if (!cur || vol > cur.vol) {
+              map[w.name] = { vol, weight: s.weight, reps: s.reps, date: k, e1rm: Math.round(e1rm*10)/10 };
+            }
+          }
+        }
+      }
+      return Object.entries(map).sort((a,b) => b[1].e1rm - a[1].e1rm).slice(0, 8);
+    }, [data.days]);
+
+    return h("div", null,
+      h("div", { className: "header" }, h("div", null, h("h1", null, "History"))),
+
+      // Bars
+      h("div", { className: "card" },
+        h("h2", null, "Last 7 days - calories"),
+        h("div", { className: "history-bars" },
+          days.map(d => {
+            const consumedH = maxCal ? Math.max(2, (d.calories / maxCal) * 130) : 0;
+            const isToday = d.key === today;
+            const [y,m,dd] = d.key.split("-").map(Number);
+            const lbl = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(y, m-1, dd).getDay()];
+            return h("div", { key: d.key, className: "hb" + (isToday ? " active" : "") },
+              h("div", { className: "v" }, d.calories > 0 ? Math.round(d.calories) : ""),
+              h("div", { className: "bar-stack" },
+                h("div", { className: "bar", style: { height: consumedH + "px" } })
+              ),
+              h("div", { className: "lbl" }, lbl)
+            );
+          })
+        ),
+        h("div", { style: { fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 4 } },
+          "Daily target: " + targets.calories + " kcal")
+      ),
+
+      // 30d averages
+      h("div", { className: "card" },
+        h("h2", null, "30-day averages (" + logged.length + " days logged)"),
+        logged.length > 0 ? h("div", null,
+          h("div", { className: "macro-grid" },
+            h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Calories"), h("div", { className: "v" }, avg.cal + " kcal")),
+            h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Protein"), h("div", { className: "v" }, avg.p + "g")),
+            h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Burned"), h("div", { className: "v" }, avg.b + " kcal"))
+          ),
+          h("div", { className: "macro-grid", style: { marginTop: 8 } },
+            h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Carbs"), h("div", { className: "v" }, avg.c + "g")),
+            h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Fat"), h("div", { className: "v" }, avg.f + "g")),
+            h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Net cal"), h("div", { className: "v" }, (avg.cal - avg.b) + ""))
+          )
+        ) : h("div", { className: "empty-state" }, h("div", { className: "t" }, "Log a few days first"))
+      ),
+
+      // PRs
+      h("div", { className: "card" },
+        h("h2", null, "Personal Records"),
+        prs.length === 0 ? h("div", { className: "empty-state" },
+          h("div", { className: "ic" }, "🏆"),
+          h("div", { className: "t" }, "No PRs yet"),
+          h("div", { className: "s" }, "Log strength workouts to track records")
+        ) : prs.map(([name, pr]) => h("div", { key: name, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--border-soft)" } },
+          h("div", null,
+            h("div", { style: { fontWeight: 500, fontSize: 14 } }, name),
+            h("div", { style: { fontSize: 12, color: "var(--muted)" } }, pr.weight + "kg × " + pr.reps + " reps · " + fmtDate(pr.date))
+          ),
+          h("div", { style: { textAlign: "right" } },
+            h("div", { style: { fontSize: 14, fontWeight: 700, color: "var(--warning)" } }, pr.e1rm + "kg"),
+            h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "est. 1RM")
+          )
+        ))
+      )
+    );
+  }
+
+  /* ---------- Profile tab ---------- */
+  function ProfileTab({ data, setData, onOpenSheet, importData, exportData, resetData, loadSample }) {
+    const targets = computeTargets(data.profile);
+    const toast = useToast();
+
+    return h("div", null,
+      h("div", { className: "header" }, h("div", null, h("h1", null, "Profile"))),
+
+      // Targets card
+      h("div", { className: "targets-card" },
+        h("div", { className: "ttl" }, "Daily targets · " + (data.profile.goal === "bulk" ? "Build muscle" : data.profile.goal === "cut" ? "Lose fat" : data.profile.goal === "lean-bulk" ? "Lean bulk" : "Maintain")),
+        h("div", { className: "grid" },
+          h("div", { className: "t-cell" }, h("div", { className: "v" }, targets.calories), h("div", { className: "l" }, "kcal")),
+          h("div", { className: "t-cell" }, h("div", { className: "v" }, targets.protein + "g"), h("div", { className: "l" }, "protein")),
+          h("div", { className: "t-cell" }, h("div", { className: "v" }, targets.carbs + "g"), h("div", { className: "l" }, "carbs")),
+          h("div", { className: "t-cell" }, h("div", { className: "v" }, targets.fat + "g"), h("div", { className: "l" }, "fat"))
+        ),
+        h("div", { style: { fontSize: 11, marginTop: 10, opacity: 0.85 } },
+          "BMI " + targets.bmi + " · " + bmiCategory(targets.bmi) + " · BMR " + targets.bmr + " · TDEE " + targets.tdee + " kcal")
+      ),
+
+      // Profile editor
+      h("div", { className: "profile-card" },
+        profileRow("Sex", data.profile.sex === "male" ? "Male" : "Female", () => onOpenSheet("profile")),
+        profileRow("Age", data.profile.age + " years", () => onOpenSheet("profile")),
+        profileRow("Height", data.profile.heightCm + " cm", () => onOpenSheet("profile")),
+        profileRow("Weight", data.profile.weightKg + " kg", () => onOpenSheet("profile")),
+        profileRow("Body Fat %", data.profile.bodyFatPct ? data.profile.bodyFatPct + "%" : "—", () => onOpenSheet("profile")),
+        profileRow("Muscle Mass", data.profile.muscleKg ? data.profile.muscleKg + " kg" : "—", () => onOpenSheet("profile")),
+        profileRow("Activity Level", activityLabel(data.profile.activity), () => onOpenSheet("profile")),
+        profileRow("Goal", goalLabel(data.profile.goal), () => onOpenSheet("profile"))
+      ),
+
+      // Provider settings
+      h("div", { className: "profile-card" },
+        h("div", { style: { padding: "12px 14px", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 } }, "Nutrition Database"),
+        profileRow("Active source", PROVIDERS[data.providers.active].name, () => onOpenSheet("providers"))
+      ),
+
+      // Data management
+      h("div", { className: "profile-card" },
+        h("div", { style: { padding: "12px 14px", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 } }, "Data & Backup"),
+        h("div", { className: "profile-row", onClick: exportData },
+          h("div", null, h("div", { className: "l" }, "Export backup"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Download JSON file")),
+          h("div", { className: "ic" }, Icon("download", 18))
+        ),
+        h("div", { className: "profile-row", onClick: importData },
+          h("div", null, h("div", { className: "l" }, "Import backup"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Replace data from JSON")),
+          h("div", { className: "ic" }, Icon("upload", 18))
+        ),
+        h("div", { className: "profile-row", onClick: loadSample },
+          h("div", null, h("div", { className: "l" }, "Load sample data"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Try the app with example entries")),
+          h("div", { className: "ic" }, Icon("refresh", 18))
+        ),
+        h("div", { className: "profile-row", onClick: resetData, style: { color: "var(--danger)" } },
+          h("div", null, h("div", { className: "l" }, "Reset all data"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Erase everything")),
+          h("div", { className: "ic", style: { color: "var(--danger)" } }, Icon("trash", 18))
+        )
+      ),
+
+      h("div", { style: { fontSize: 11, color: "var(--muted)", textAlign: "center", padding: "12px 8px" } },
+        "All data lives on this device only. No accounts. No tracking. Export regularly to back up."
+      )
+    );
+  }
+
+  function profileRow(label, value, onClick) {
+    return h("div", { className: "profile-row", onClick },
+      h("div", { className: "l" }, label),
+      h("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+        h("div", { className: "v" }, value),
+        h("div", { className: "ic" }, Icon("chevron", 16))
+      )
+    );
+  }
+
+  function activityLabel(a) {
+    if (a <= 1.25) return "Sedentary";
+    if (a <= 1.4) return "Light";
+    if (a <= 1.6) return "Moderate";
+    if (a <= 1.75) return "Active";
+    return "Very active";
+  }
+  function goalLabel(g) {
+    return { cut: "Lose fat", bulk: "Build muscle", "lean-bulk": "Lean bulk", maintain: "Maintain" }[g] || g;
+  }
+
+  /* ---------- Profile editor sheet ---------- */
+  function ProfileSheet({ open, onClose, data, setData }) {
+    const [p, setP] = useState(data.profile);
+    useEffect(() => { if (open) setP(data.profile); }, [open, data.profile]);
+    const N = (k) => (e) => setP(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
+    const S = (k) => (e) => setP(s => ({ ...s, [k]: e.target.value }));
+    const save = () => {
+      const next = { ...data, profile: {
+        ...p,
+        age: Number(p.age) || 28,
+        heightCm: Number(p.heightCm) || 175,
+        weightKg: Number(p.weightKg) || 75,
+        bodyFatPct: p.bodyFatPct === "" || p.bodyFatPct == null ? null : Number(p.bodyFatPct),
+        muscleKg: p.muscleKg === "" || p.muscleKg == null ? null : Number(p.muscleKg),
+        fatKg: p.fatKg === "" || p.fatKg == null ? null : Number(p.fatKg),
+        activity: Number(p.activity) || 1.55
+      } };
+      // Auto-log weight today if changed
+      const dateKey = todayKey();
+      const log = (next.weightLog || []).filter(x => x.date !== dateKey);
+      log.push({ date: dateKey, kg: next.profile.weightKg });
+      next.weightLog = log.sort((a,b) => a.date.localeCompare(b.date));
+      next.onboarded = true;
+      setData(next);
+      onClose();
+    };
+    return h(Sheet, { open, onClose, title: "Your profile" },
+      h("div", { className: "field-row" },
+        h("div", null, h("label", null, "Sex"),
+          h("select", { className: "select", value: p.sex, onChange: S("sex") },
+            h("option", { value: "male" }, "Male"), h("option", { value: "female" }, "Female"))),
+        h("div", null, h("label", null, "Age"),
+          h("input", { className: "input", type: "number", inputMode: "numeric", value: p.age, onChange: N("age") }))
+      ),
+      h("div", { className: "field-row", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Height (cm)"),
+          h("input", { className: "input", type: "number", inputMode: "numeric", value: p.heightCm, onChange: N("heightCm") })),
+        h("div", null, h("label", null, "Weight (kg)"),
+          h("input", { className: "input", type: "number", step: "0.1", inputMode: "decimal", value: p.weightKg, onChange: N("weightKg") }))
+      ),
+      h("div", { className: "field", style: { marginTop: 8 } },
+        h("label", null, "Body Fat % (optional, from your BMI report)"),
+        h("input", { className: "input", type: "number", step: "0.1", inputMode: "decimal", value: p.bodyFatPct ?? "", onChange: N("bodyFatPct"), placeholder: "e.g. 22" })
+      ),
+      h("div", { className: "field-row", style: { marginTop: 8 } },
+        h("div", null, h("label", null, "Muscle Mass (kg)"),
+          h("input", { className: "input", type: "number", step: "0.1", inputMode: "decimal", value: p.muscleKg ?? "", onChange: N("muscleKg"), placeholder: "optional" })),
+        h("div", null, h("label", null, "Fat Mass (kg)"),
+          h("input", { className: "input", type: "number", step: "0.1", inputMode: "decimal", value: p.fatKg ?? "", onChange: N("fatKg"), placeholder: "optional" }))
+      ),
+      h("div", { className: "field", style: { marginTop: 8 } },
+        h("label", null, "Activity Level"),
+        h("select", { className: "select", value: p.activity, onChange: N("activity") },
+          h("option", { value: 1.2 }, "Sedentary (desk job, no exercise)"),
+          h("option", { value: 1.375 }, "Light (1-3 days/wk)"),
+          h("option", { value: 1.55 }, "Moderate (3-5 days/wk)"),
+          h("option", { value: 1.725 }, "Active (6-7 days/wk)"),
+          h("option", { value: 1.9 }, "Very active (twice daily)")
+        )
+      ),
+      h("div", { className: "field", style: { marginTop: 8 } },
+        h("label", null, "Goal"),
+        h("select", { className: "select", value: p.goal, onChange: S("goal") },
+          h("option", { value: "bulk" }, "Build muscle (+300 kcal)"),
+          h("option", { value: "lean-bulk" }, "Lean bulk (+150 kcal)"),
+          h("option", { value: "maintain" }, "Maintain"),
+          h("option", { value: "cut" }, "Lose fat (-400 kcal)")
+        )
+      ),
+      h("button", { className: "btn", onClick: save, style: { marginTop: 8 } }, "Save profile")
+    );
+  }
+
+  /* ---------- Providers sheet ---------- */
+  function ProvidersSheet({ open, onClose, data, setData }) {
+    const [active, setActive] = useState(data.providers.active);
+    const [cfg, setCfg] = useState(data.providers);
+    const toast = useToast();
+    useEffect(() => { if (open) { setActive(data.providers.active); setCfg(data.providers); } }, [open, data.providers]);
+
+    const save = () => {
+      const next = { ...data, providers: { ...cfg, active } };
+      setData(next);
+      toast("Saved");
+      onClose();
+    };
+
+    return h(Sheet, { open, onClose, title: "Nutrition Database" },
+      h("div", { style: { fontSize: 13, color: "var(--muted)", marginBottom: 12 } },
+        "Choose where food lookups come from. The local database works offline. External providers need a free API key, stored only on this device."
+      ),
+      Object.values(PROVIDERS).map(p => h("div", {
+        key: p.id,
+        className: "card",
+        style: { padding: 12, cursor: "pointer", border: active === p.id ? "2px solid var(--primary)" : "1px solid var(--border)", marginBottom: 8 },
+        onClick: () => setActive(p.id)
+      },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          h("div", null,
+            h("div", { style: { fontWeight: 600 } }, p.name),
+            h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 2 } },
+              p.id === "mock" ? "Built-in · " + MOCK_FOODS.length + " foods · offline" :
+              p.id === "usda" ? "Free · register at api.data.gov" :
+              p.id === "nutritionix" ? "Free tier · 150 req/day" :
+              p.id === "edamam" ? "Free tier · 10k req/month" : "")
+          ),
+          active === p.id ? h("div", { style: { color: "var(--primary)", fontSize: 18 } }, "✓") : null
+        ),
+        active === p.id && (p.fields || []).map(f => h("div", { key: f.key, style: { marginTop: 8 } },
+          h("label", null, f.label),
+          h("input", {
+            className: "input",
+            type: "text",
+            placeholder: f.placeholder,
+            value: (cfg[p.id] && cfg[p.id][f.key]) || "",
+            onChange: (e) => setCfg(s => ({ ...s, [p.id]: { ...s[p.id], [f.key]: e.target.value } }))
+          })
+        ))
+      )),
+      h("button", { className: "btn", onClick: save }, "Save")
+    );
+  }
+
+  /* ---------- Sample data ---------- */
+  function makeSampleData(profile) {
+    const data = defaultData();
+    data.profile = { ...data.profile, ...profile, weightKg: profile.weightKg || 75 };
+    data.onboarded = true;
+    const t = todayKey();
+    // 6 days of meals/workouts
+    const sampleFoods = (slot, items) => items.map(([id, qty]) => {
+      const f = MOCK_FOODS.find(x => x.id === id);
+      return f ? { ...f, id: uid(), slot, qty: qty || 1, time: Date.now() } : null;
+    }).filter(Boolean);
+    for (let i = 0; i < 6; i++) {
+      const key = shift(t, -i);
+      data.days[key] = { meals: [], workouts: [] };
+      data.days[key].meals.push(
+        ...sampleFoods("breakfast", [["oats", 1], ["banana", 1], ["whey-protein", 1]]),
+        ...sampleFoods("lunch", [["roti", 2], ["dal-toor", 1], ["okra-sabji", 1], ["curd", 0.5]]),
+        ...sampleFoods("snacks", [["almonds", 1], ["apple", 1]]),
+        ...sampleFoods("dinner", [["chicken-breast", 1.5], ["rice-brown", 1], ["broccoli", 1]])
+      );
+      if (i % 2 === 0) {
+        const w = { id: uid(), type: "strength", name: i % 4 === 0 ? "Bench Press" : "Squat", sets: [
+          { weight: 60, reps: 8, rpe: 7 }, { weight: 60, reps: 8, rpe: 7.5 }, { weight: 60, reps: 7, rpe: 8 }
+        ], notes: "", time: Date.now(), calories: 0 };
+        w.calories = strengthCalories(w, data.profile.weightKg);
+        data.days[key].workouts.push(w);
+      } else {
+        const w = { id: uid(), type: "cardio", name: "Running", minutes: 30, distanceKm: 5, met: 9, notes: "", time: Date.now(), calories: 0 };
+        w.calories = cardioCalories(w, data.profile.weightKg);
+        data.days[key].workouts.push(w);
+      }
+    }
+    // Weight log: gradual upward trend (bulk)
+    for (let i = 13; i >= 0; i--) {
+      data.weightLog.push({ date: shift(t, -i), kg: Math.round((data.profile.weightKg - 0.6 + (13-i)*0.05) * 10) / 10 });
+    }
+    return data;
+  }
+
+  /* ---------- Install banner ---------- */
+  function InstallBanner({ onDismiss }) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "");
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+    if (isStandalone) return null;
+    return h("div", { className: "install-banner" },
+      h("div", { style: { flex: 1, minWidth: 0 } },
+        h("div", { className: "t" }, "Add to Home Screen"),
+        h("div", { className: "s" }, isIOS ? "Tap Share → Add to Home Screen" : "Tap menu (⋮) → Install / Add to Home")
+      ),
+      h("button", { className: "close-x", onClick: onDismiss, "aria-label": "Dismiss" }, "×")
+    );
+  }
+
+  /* ---------- App root ---------- */
+  function App() {
+    const [data, setDataRaw] = useState(loadData);
+    const [tab, setTab] = useState("dashboard");
+    const [activeDate, setActiveDate] = useState(todayKey());
+    const [sheet, setSheet] = useState(null); // { type, slot? }
+    const toast = useToast();
+
+    const setData = useCallback((next) => {
+      setDataRaw(next);
+      safeLS.set(STORAGE_KEY, JSON.stringify(next));
+    }, []);
+
+    // Onboarding: prompt for profile on first load
+    useEffect(() => {
+      if (!data.onboarded) {
+        setSheet({ type: "profile" });
+      }
+    }, []);
+
+    const openAddMeal = (slot) => setSheet({ type: "add-meal", slot });
+    const openAddWorkout = () => setSheet({ type: "add-workout" });
+    const closeSheet = () => setSheet(null);
+
+    const exportData = () => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fittrack-backup-" + todayKey() + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+      toast("Backup downloaded");
+    };
+    const importData = () => {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = "application/json,.json";
+      inp.onchange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const r = new FileReader();
+        r.onload = () => {
+          try {
+            const parsed = JSON.parse(r.result);
+            if (!confirm("This will replace your current data. Continue?")) return;
+            setData(migrate(parsed));
+            toast("Backup imported");
+          } catch(e) { toast("Invalid backup file"); }
+        };
+        r.readAsText(file);
+      };
+      inp.click();
+    };
+    const resetData = () => {
+      if (!confirm("Erase ALL data? This cannot be undone.")) return;
+      if (!confirm("Are you absolutely sure?")) return;
+      const fresh = defaultData();
+      setData(fresh);
+      setActiveDate(todayKey());
+      toast("Reset complete");
+    };
+    const loadSample = () => {
+      if (Object.keys(data.days).length > 0 && !confirm("Replace current data with sample data?")) return;
+      setData(makeSampleData(data.profile));
+      toast("Sample data loaded");
+    };
+
+    const tabs = [
+      { id: "dashboard", name: "Home", icon: "home" },
+      { id: "meals", name: "Meals", icon: "meal" },
+      { id: "workouts", name: "Workouts", icon: "workout" },
+      { id: "history", name: "History", icon: "history" },
+      { id: "profile", name: "Profile", icon: "user" }
+    ];
+
+    return h("div", { className: "app" },
+      h("main", { className: "content" },
+        !data.hideInstallBanner && tab === "dashboard" && h(InstallBanner, {
+          onDismiss: () => setData({ ...data, hideInstallBanner: true })
+        }),
+        tab === "dashboard" && h(Dashboard, { data, setData, activeDate, setActiveDate, openWeightSheet: () => setSheet({ type: "weight" }) }),
+        tab === "meals" && h(MealsTab, { data, setData, activeDate, setActiveDate, openAddMeal }),
+        tab === "workouts" && h(WorkoutsTab, { data, setData, activeDate, setActiveDate, openAddWorkout }),
+        tab === "history" && h(HistoryTab, { data }),
+        tab === "profile" && h(ProfileTab, { data, setData, onOpenSheet: (t) => setSheet({ type: t }), importData, exportData, resetData, loadSample })
+      ),
+
+      // FABs
+      (tab === "meals") && h("button", {
+        className: "fab", onClick: () => openAddMeal("snacks"), "aria-label": "Add meal"
+      }, Icon("plus", 26)),
+      (tab === "workouts") && h("button", {
+        className: "fab", onClick: openAddWorkout, "aria-label": "Add workout"
+      }, Icon("plus", 26)),
+
+      // Bottom nav
+      h("nav", { className: "bottom-nav" },
+        tabs.map(t => h("button", {
+          key: t.id,
+          className: tab === t.id ? "active" : "",
+          onClick: () => setTab(t.id),
+          "aria-label": t.name
+        }, Icon(t.icon, 22), h("span", null, t.name)))
+      ),
+
+      // Sheets
+      h(AddMealSheet, { open: sheet && sheet.type === "add-meal", onClose: closeSheet, data, setData, activeDate, slot: sheet && sheet.slot }),
+      h(AddWorkoutSheet, { open: sheet && sheet.type === "add-workout", onClose: closeSheet, data, setData, activeDate }),
+      h(WeightSheet, { open: sheet && sheet.type === "weight", onClose: closeSheet, data, setData }),
+      h(ProfileSheet, { open: sheet && sheet.type === "profile", onClose: closeSheet, data, setData }),
+      h(ProvidersSheet, { open: sheet && sheet.type === "providers", onClose: closeSheet, data, setData })
+    );
+  }
+
+  /* ---------- Mount ---------- */
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(h(ToastProvider, null, h(App)));
+
+  /* ---------- Service Worker (best effort) ---------- */
+  if ("serviceWorker" in navigator) {
+    const swCode = "const C='fittrack-v1';self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(caches.open(C).then(c=>c.match(e.request).then(r=>r||fetch(e.request).then(res=>{try{c.put(e.request,res.clone())}catch(x){}return res}).catch(()=>r))))});";
+    try {
+      const blob = new Blob([swCode], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(url).catch(() => {});
+    } catch(e) {}
+  }
+})();
+</script>
+</body>
+</html>

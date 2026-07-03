@@ -1283,9 +1283,13 @@
     );
   }
 
-  function DailyGoalCompletion({ totals, targets }) {
+  function DailyGoalCompletion({ totals, targets, onEditGoal }) {
     return h("div", { className: "card" },
-      h("h2", null, "Today's goal completion"),
+      h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
+        h("h2", { style: { margin: 0 } }, "Today's goal completion"),
+        onEditGoal && h("button", { className: "icon-btn-sm", onClick: onEditGoal, "aria-label": "Edit daily goal" }, Icon("edit", 16))
+      ),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", margin: "2px 0 6px" } }, "How much of today's target you've hit so far — resets every day"),
       h("div", { className: "goal-rings-grid" },
         h(SmallGoalRing, { label: "Calories", consumed: totals.calories, target: targets.calories }),
         h(SmallGoalRing, { label: "Protein", consumed: totals.protein, target: targets.protein }),
@@ -1314,6 +1318,7 @@
         h("h2", { style: { margin: 0 } }, "7-day adherence"),
         h("div", { className: "pill " + (hitCount >= 5 ? "pos" : "") }, hitCount + "/7 on target")
       ),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", margin: "2px 0 6px" } }, "Each day checked against your " + targets.calories + " kcal daily goal"),
       h("div", { className: "adherence-row" },
         days.map(d => h("div", { key: d.key, className: "adherence-dot" },
           h("div", { className: "dot" + (d.hit ? " hit" : "") + (d.over ? " over" : "") + (d.isToday ? " today" : "") }),
@@ -1323,8 +1328,9 @@
     );
   }
 
-  function Dashboard({ data, setData, activeDate, setActiveDate, openWeightSheet }) {
+  function Dashboard({ data, setData, activeDate, setActiveDate, openWeightSheet, openNutritionGoal }) {
     const targets = useMemo(() => computeTargets(data.profile), [data.profile]);
+    const customGoal = isCustomTargets(data.profile);
     const day = data.days[activeDate];
     const totals = useMemo(() => dayTotals(day), [day]);
     const burn = dayBurn(day);
@@ -1350,7 +1356,13 @@
 
       // Main card with calories ring and macros
       h("div", { className: "card" },
-        h("h2", null, "Calories"),
+        h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h("h2", { style: { margin: 0 } }, "Today's calorie goal"),
+            h("span", { className: "pill " + (customGoal ? "pos" : "") }, customGoal ? "Your goal" : "Auto-calculated")
+          ),
+          h("button", { className: "icon-btn-sm", onClick: openNutritionGoal, "aria-label": "Edit daily goal" }, Icon("edit", 16))
+        ),
         h("div", { className: "macro-ring-wrap" },
           h(MacroRing, { consumed: totals.calories, target: targets.calories })
         ),
@@ -1361,8 +1373,8 @@
         )
       ),
 
-      // Daily goal completion (per-day, not lifetime)
-      h(DailyGoalCompletion, { totals, targets }),
+      // Daily goal completion (per-day, not lifetime — measured against the goal above)
+      h(DailyGoalCompletion, { totals, targets, onEditGoal: openNutritionGoal }),
       h(WeeklyAdherence, { data }),
 
       // Quick stats
@@ -2242,6 +2254,54 @@
     );
   }
 
+  /* ---------- Editable daily nutrition goal ---------- */
+  function isCustomTargets(profile) { return !!(profile.customCalories || profile.customMacros); }
+
+  function NutritionGoalSheet({ open, onClose, data, setData }) {
+    const auto = useMemo(() => computeTargets({ ...data.profile, customCalories: null, customMacros: null }), [data.profile]);
+    const current = useMemo(() => computeTargets(data.profile), [data.profile]);
+    const [v, setV] = useState({ calories: current.calories, protein: current.protein, carbs: current.carbs, fat: current.fat });
+    useEffect(() => {
+      if (open) setV({ calories: current.calories, protein: current.protein, carbs: current.carbs, fat: current.fat });
+    }, [open]);
+    const toast = useToast();
+    const N = (k) => (e) => setV(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
+
+    const save = () => {
+      const cal = Number(v.calories) || 0;
+      const p = Number(v.protein) || 0, c = Number(v.carbs) || 0, f = Number(v.fat) || 0;
+      if (cal < 800) { toast("Calories look too low — enter your real daily target"); return; }
+      const next = { ...data, profile: { ...data.profile, customCalories: cal, customMacros: { protein: p, carbs: c, fat: f } } };
+      setData(next);
+      toast("Daily goal updated");
+      onClose();
+    };
+    const useAuto = () => {
+      const next = { ...data, profile: { ...data.profile, customCalories: null, customMacros: null } };
+      setData(next);
+      setV({ calories: auto.calories, protein: auto.protein, carbs: auto.carbs, fat: auto.fat });
+      toast("Using auto-calculated goal");
+    };
+
+    return h(Sheet, { open, onClose, title: "Your daily nutrition goal" },
+      h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginBottom: 12 } },
+        "This is your fixed daily target — every ring and bar on Home is measured against these numbers, every day."),
+      h("div", { className: "field" },
+        h("label", null, "Daily calories (kcal)"),
+        h("input", { className: "input", type: "number", inputMode: "numeric", value: v.calories, onChange: N("calories") })
+      ),
+      h("div", { className: "field-row3" },
+        h("div", null, h("label", null, "Protein (g)"), h("input", { className: "input", type: "number", inputMode: "numeric", value: v.protein, onChange: N("protein") })),
+        h("div", null, h("label", null, "Carbs (g)"), h("input", { className: "input", type: "number", inputMode: "numeric", value: v.carbs, onChange: N("carbs") })),
+        h("div", null, h("label", null, "Fat (g)"), h("input", { className: "input", type: "number", inputMode: "numeric", value: v.fat, onChange: N("fat") }))
+      ),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 10, marginBottom: 4 } },
+        "Auto-calculated suggestion for your profile & goal: " + auto.calories + " kcal · P" + auto.protein + " C" + auto.carbs + " F" + auto.fat + "g"),
+      h("button", { className: "btn secondary", onClick: useAuto, style: { marginTop: 4 } }, "Use auto-calculated instead"),
+      h("button", { className: "btn", onClick: save, style: { marginTop: 8 } }, "Save my daily goal")
+    );
+  }
+
   /* ---------- Stats (formerly History) ---------- */
   function bestWeightForName(days, needle) {
     let max = 0;
@@ -2539,7 +2599,14 @@
 
       // Targets card
       h("div", { className: "targets-card" },
-        h("div", { className: "ttl" }, "Daily targets · " + (data.profile.goal === "bulk" ? "Build muscle" : data.profile.goal === "cut" ? "Lose fat" : data.profile.goal === "lean-bulk" ? "Lean bulk" : "Maintain")),
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          h("div", { className: "ttl" }, "Daily targets · " + (data.profile.goal === "bulk" ? "Build muscle" : data.profile.goal === "cut" ? "Lose fat" : data.profile.goal === "lean-bulk" ? "Lean bulk" : "Maintain") + (isCustomTargets(data.profile) ? " · Custom" : " · Auto")),
+          h("button", {
+            onClick: () => onOpenSheet("nutrition-goal"),
+            "aria-label": "Edit daily goal",
+            style: { background: "rgba(0,0,0,0.12)", border: "none", width: 30, height: 30, borderRadius: 9, color: "#1a0f0a", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }
+          }, Icon("edit", 16))
+        ),
         h("div", { className: "grid" },
           h("div", { className: "t-cell" }, h("div", { className: "v" }, targets.calories), h("div", { className: "l" }, "kcal")),
           h("div", { className: "t-cell" }, h("div", { className: "v" }, targets.protein + "g"), h("div", { className: "l" }, "protein")),
@@ -2943,7 +3010,7 @@
         !data.hideInstallBanner && tab === "dashboard" && h(InstallBanner, {
           onDismiss: () => setData({ ...data, hideInstallBanner: true })
         }),
-        tab === "dashboard" && h(Dashboard, { data, setData, activeDate, setActiveDate, openWeightSheet: () => setSheet({ type: "weight" }) }),
+        tab === "dashboard" && h(Dashboard, { data, setData, activeDate, setActiveDate, openWeightSheet: () => setSheet({ type: "weight" }), openNutritionGoal: () => setSheet({ type: "nutrition-goal" }) }),
         tab === "meals" && h(MealsTab, { data, setData, activeDate, setActiveDate, openAddMeal }),
         tab === "workouts" && h(WorkoutsTab, { data, setData, activeDate, setActiveDate, openAddWorkout }),
         tab === "stats" && h(StatsTab, { data }),
@@ -2980,6 +3047,7 @@
       h(AddMealSheet, { open: sheet && sheet.type === "add-meal", onClose: closeSheet, data, setData, activeDate, slot: sheet && sheet.slot }),
       h(AddWorkoutSheet, { open: sheet && sheet.type === "add-workout", onClose: closeSheet, data, setData, activeDate }),
       h(WeightSheet, { open: sheet && sheet.type === "weight", onClose: closeSheet, data, setData }),
+      h(NutritionGoalSheet, { open: sheet && sheet.type === "nutrition-goal", onClose: closeSheet, data, setData }),
       h(ProfileSheet, { open: sheet && sheet.type === "profile", onClose: closeSheet, data, setData }),
       h(ProvidersSheet, { open: sheet && sheet.type === "providers", onClose: closeSheet, data, setData })
     );

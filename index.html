@@ -542,6 +542,7 @@
     return {
       version: 1,
       profile: {
+        name: "",
         sex: "male",
         age: 28,
         heightCm: 175,
@@ -1580,7 +1581,7 @@
     return h("div", null,
       h("div", { className: "header" },
         h("div", null,
-          h("h1", null, greeting() + ", Chinmay"),
+          h("h1", null, greeting() + (data.profile.name ? ", " + data.profile.name : "") + "!"),
           h("div", { className: "sub" }, fmtDate(activeDate) + " - " + bmiCategory(targets.bmi))
         )
       ),
@@ -3384,6 +3385,7 @@
 
       // Profile editor
       h("div", { className: "profile-card" },
+        profileRow("Name", data.profile.name || "Not set", () => onOpenSheet("profile")),
         profileRow("Sex", data.profile.sex === "male" ? "Male" : "Female", () => onOpenSheet("profile")),
         profileRow("Age", data.profile.age + " years", () => onOpenSheet("profile")),
         profileRow("Height", data.profile.heightCm + " cm", () => onOpenSheet("profile")),
@@ -3467,6 +3469,7 @@
     const save = () => {
       const next = { ...data, profile: {
         ...p,
+        name: (p.name || "").trim().slice(0, 30),
         age: Number(p.age) || 28,
         heightCm: Number(p.heightCm) || 175,
         weightKg: Number(p.weightKg) || 75,
@@ -3485,6 +3488,10 @@
       onClose();
     };
     return h(Sheet, { open, onClose, title: "Your profile" },
+      h("div", { className: "field" },
+        h("label", null, "Your name"),
+        h("input", { className: "input", type: "text", value: p.name || "", onChange: S("name"), placeholder: "e.g. Chinmay", maxLength: 30 })
+      ),
       h("div", { className: "field-row" },
         h("div", null, h("label", null, "Sex"),
           h("select", { className: "select", value: p.sex, onChange: S("sex") },

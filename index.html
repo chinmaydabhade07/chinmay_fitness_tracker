@@ -566,6 +566,8 @@
       weightLog: [],
       days: {},
       customFoods: [],
+      customExercises: [],
+      exerciseUnits: {},
       dietPlan: null,
       onboarded: false,
       hideInstallBanner: false
@@ -585,6 +587,8 @@
       days: d.days || {},
       weightLog: d.weightLog || [],
       customFoods: d.customFoods || [],
+      customExercises: d.customExercises || [],
+      exerciseUnits: d.exerciseUnits || {},
       dietPlan: d.dietPlan || null
     };
   }
@@ -989,58 +993,78 @@
   // Each provider: { id, name, search(query, cfg) -> [results], requiresCreds(cfg) -> bool }
   // Result shape: { id, name, serving, calories, protein, carbs, fat, fiber?, sugar?, sodium?, micros?: {} }
 
+  // Every item carries `g` — the weight (g, or ml for liquids) that the listed macros correspond to.
+  // Nutrition for any logged weight is derived as value * (loggedGrams / g), i.e. the per-100g/ml
+  // adjustment factor generalized to whatever reference weight is most natural for that food.
   const MOCK_FOODS = [
-    { id:"jowar-bhakri", name:"Jowar Bhakri", serving:"1 piece (60g)", calories:120, protein:3, carbs:25, fat:1, fiber:3, sugar:0, sodium:2 },
-    { id:"roti", name:"Chapati / Roti", serving:"1 piece (40g)", calories:100, protein:3, carbs:18, fat:2, fiber:2, sugar:0, sodium:1 },
-    { id:"bajra-roti", name:"Bajra Roti", serving:"1 piece (50g)", calories:115, protein:3, carbs:22, fat:2, fiber:3, sugar:0, sodium:2 },
-    { id:"rice-basmati", name:"Basmati Rice (cooked)", serving:"1 cup (150g)", calories:200, protein:4, carbs:45, fat:0.5, fiber:1, sugar:0, sodium:1 },
-    { id:"rice-brown", name:"Brown Rice (cooked)", serving:"1 cup (195g)", calories:215, protein:5, carbs:45, fat:1.8, fiber:3.5, sugar:0.7, sodium:10 },
-    { id:"dal-toor", name:"Toor Dal", serving:"1 cup (200g)", calories:200, protein:11, carbs:30, fat:4, fiber:8, sugar:2, sodium:300 },
-    { id:"dal-moong", name:"Moong Dal", serving:"1 cup (200g)", calories:190, protein:14, carbs:28, fat:1, fiber:9, sugar:1, sodium:280 },
-    { id:"rajma", name:"Rajma (cooked)", serving:"1 cup (180g)", calories:220, protein:13, carbs:38, fat:1, fiber:11, sugar:3, sodium:280 },
-    { id:"chole", name:"Chole / Chana Masala", serving:"1 cup (200g)", calories:270, protein:12, carbs:35, fat:9, fiber:9, sugar:5, sodium:550 },
-    { id:"paneer", name:"Paneer", serving:"100g", calories:290, protein:18, carbs:6, fat:22, fiber:0, sugar:1, sodium:18 },
-    { id:"palak-paneer", name:"Palak Paneer", serving:"1 cup (200g)", calories:280, protein:14, carbs:14, fat:20, fiber:5, sugar:3, sodium:600 },
-    { id:"okra-sabji", name:"Okra Sabji (Bhindi)", serving:"1 cup (150g)", calories:90, protein:3, carbs:12, fat:4, fiber:5, sugar:3, sodium:300 },
-    { id:"aloo-sabji", name:"Aloo Sabji", serving:"1 cup (150g)", calories:180, protein:3, carbs:28, fat:7, fiber:3, sugar:2, sodium:400 },
-    { id:"eggs-bhurji", name:"Eggs Bhurji", serving:"2 eggs", calories:200, protein:13, carbs:3, fat:15, fiber:1, sugar:1, sodium:280 },
-    { id:"boiled-eggs", name:"Boiled Eggs", serving:"2 eggs", calories:155, protein:13, carbs:1, fat:11, fiber:0, sugar:0, sodium:124 },
-    { id:"omelette", name:"Omelette (2 eggs)", serving:"2 eggs", calories:190, protein:13, carbs:1, fat:14, fiber:0, sugar:1, sodium:200 },
-    { id:"idli", name:"Idli", serving:"2 pieces", calories:120, protein:4, carbs:25, fat:0.5, fiber:1, sugar:0, sodium:200 },
-    { id:"dosa", name:"Plain Dosa", serving:"1 piece", calories:170, protein:4, carbs:25, fat:6, fiber:1, sugar:0, sodium:250 },
-    { id:"poha", name:"Poha", serving:"1 cup (180g)", calories:230, protein:5, carbs:42, fat:5, fiber:2, sugar:2, sodium:350 },
-    { id:"upma", name:"Upma", serving:"1 cup (180g)", calories:220, protein:6, carbs:35, fat:7, fiber:2, sugar:2, sodium:380 },
-    { id:"curd", name:"Curd / Yogurt (plain)", serving:"1 cup (200g)", calories:120, protein:7, carbs:9, fat:6, fiber:0, sugar:9, sodium:90 },
-    { id:"greek-yogurt", name:"Greek Yogurt (plain)", serving:"1 cup (200g)", calories:130, protein:20, carbs:8, fat:1, fiber:0, sugar:8, sodium:75 },
-    { id:"banana", name:"Banana", serving:"1 medium", calories:105, protein:1.3, carbs:27, fat:0.4, fiber:3.1, sugar:14, sodium:1 },
-    { id:"apple", name:"Apple", serving:"1 medium", calories:95, protein:0.5, carbs:25, fat:0.3, fiber:4, sugar:19, sodium:2 },
-    { id:"orange", name:"Orange", serving:"1 medium", calories:62, protein:1.2, carbs:15, fat:0.2, fiber:3, sugar:12, sodium:0 },
-    { id:"mango", name:"Mango", serving:"1 cup (165g)", calories:99, protein:1.4, carbs:25, fat:0.6, fiber:2.6, sugar:23, sodium:2 },
-    { id:"musk-melon", name:"Musk Melon", serving:"1 cup (160g)", calories:54, protein:1.3, carbs:13, fat:0.3, fiber:1.4, sugar:13, sodium:25 },
-    { id:"ice-apple", name:"Ice Apple (Nungu)", serving:"2 pieces", calories:43, protein:0.9, carbs:11, fat:0.1, fiber:1, sugar:8, sodium:1 },
-    { id:"watermelon", name:"Watermelon", serving:"1 cup (150g)", calories:46, protein:0.9, carbs:11, fat:0.2, fiber:0.6, sugar:9, sodium:2 },
-    { id:"grapes", name:"Grapes", serving:"1 cup (150g)", calories:104, protein:1.1, carbs:27, fat:0.2, fiber:1.4, sugar:23, sodium:3 },
-    { id:"chicken-breast", name:"Chicken Breast (grilled)", serving:"100g", calories:165, protein:31, carbs:0, fat:3.6, fiber:0, sugar:0, sodium:74 },
-    { id:"chicken-curry", name:"Chicken Curry", serving:"1 cup (200g)", calories:300, protein:25, carbs:8, fat:18, fiber:2, sugar:4, sodium:600 },
-    { id:"chicken-tikka", name:"Chicken Tikka", serving:"100g", calories:180, protein:28, carbs:2, fat:7, fiber:0, sugar:1, sodium:380 },
-    { id:"fish-fillet", name:"Fish Fillet (grilled)", serving:"100g", calories:140, protein:24, carbs:0, fat:4, fiber:0, sugar:0, sodium:60 },
-    { id:"salmon", name:"Salmon (grilled)", serving:"100g", calories:208, protein:22, carbs:0, fat:13, fiber:0, sugar:0, sodium:59 },
-    { id:"whey-protein", name:"Whey Protein", serving:"1 scoop (30g)", calories:120, protein:24, carbs:3, fat:1.5, fiber:0, sugar:2, sodium:50 },
-    { id:"oats", name:"Oats (cooked)", serving:"1 cup (240g)", calories:160, protein:6, carbs:28, fat:3, fiber:4, sugar:1, sodium:9 },
-    { id:"quinoa", name:"Quinoa (cooked)", serving:"1 cup (185g)", calories:222, protein:8, carbs:39, fat:4, fiber:5, sugar:2, sodium:13 },
-    { id:"bread", name:"Whole Wheat Bread", serving:"1 slice (28g)", calories:80, protein:4, carbs:14, fat:1, fiber:2, sugar:1, sodium:140 },
-    { id:"pasta", name:"Pasta (cooked)", serving:"1 cup (140g)", calories:200, protein:7, carbs:42, fat:1, fiber:2, sugar:1, sodium:1 },
-    { id:"almonds", name:"Almonds", serving:"1 oz (28g)", calories:164, protein:6, carbs:6, fat:14, fiber:3.5, sugar:1.2, sodium:0 },
-    { id:"cashews", name:"Cashews", serving:"1 oz (28g)", calories:157, protein:5, carbs:9, fat:12, fiber:0.9, sugar:1.7, sodium:3 },
-    { id:"peanut-butter", name:"Peanut Butter", serving:"2 tbsp (32g)", calories:188, protein:8, carbs:7, fat:16, fiber:2, sugar:3, sodium:152 },
-    { id:"milk-whole", name:"Whole Milk", serving:"1 cup (240ml)", calories:149, protein:8, carbs:12, fat:8, fiber:0, sugar:12, sodium:105 },
-    { id:"milk-skim", name:"Skim Milk", serving:"1 cup (240ml)", calories:83, protein:8, carbs:12, fat:0.2, fiber:0, sugar:12, sodium:103 },
-    { id:"coffee-black", name:"Coffee (black)", serving:"1 cup", calories:2, protein:0.3, carbs:0, fat:0, fiber:0, sugar:0, sodium:5 },
-    { id:"tea-milk", name:"Tea with Milk & Sugar", serving:"1 cup", calories:75, protein:2, carbs:12, fat:2, fiber:0, sugar:10, sodium:30 },
-    { id:"avocado", name:"Avocado", serving:"1/2 medium", calories:160, protein:2, carbs:9, fat:15, fiber:7, sugar:0.7, sodium:7 },
-    { id:"sweet-potato", name:"Sweet Potato (baked)", serving:"1 medium", calories:103, protein:2.3, carbs:24, fat:0.2, fiber:3.8, sugar:7.4, sodium:41 },
-    { id:"broccoli", name:"Broccoli (steamed)", serving:"1 cup (156g)", calories:55, protein:3.7, carbs:11, fat:0.6, fiber:5.1, sugar:2.2, sodium:64 }
+    { id:"jowar-bhakri", name:"Jowar Bhakri", serving:"1 piece (60g)", g:60, calories:120, protein:3, carbs:25, fat:1, fiber:3, sugar:0, sodium:2 },
+    { id:"roti", name:"Chapati / Roti", serving:"1 piece (40g)", g:40, calories:100, protein:3, carbs:18, fat:2, fiber:2, sugar:0, sodium:1 },
+    { id:"bajra-roti", name:"Bajra Roti", serving:"1 piece (50g)", g:50, calories:115, protein:3, carbs:22, fat:2, fiber:3, sugar:0, sodium:2 },
+    { id:"rice-basmati", name:"Basmati Rice (cooked)", serving:"1 cup (150g)", g:150, calories:200, protein:4, carbs:45, fat:0.5, fiber:1, sugar:0, sodium:1 },
+    { id:"rice-brown", name:"Brown Rice (cooked)", serving:"1 cup (195g)", g:195, calories:215, protein:5, carbs:45, fat:1.8, fiber:3.5, sugar:0.7, sodium:10 },
+    { id:"dal-toor", name:"Toor Dal", serving:"1 cup (200g)", g:200, calories:200, protein:11, carbs:30, fat:4, fiber:8, sugar:2, sodium:300 },
+    { id:"dal-moong", name:"Moong Dal", serving:"1 cup (200g)", g:200, calories:190, protein:14, carbs:28, fat:1, fiber:9, sugar:1, sodium:280 },
+    { id:"rajma", name:"Rajma (cooked)", serving:"1 cup (180g)", g:180, calories:220, protein:13, carbs:38, fat:1, fiber:11, sugar:3, sodium:280 },
+    { id:"chole", name:"Chole / Chana Masala", serving:"1 cup (200g)", g:200, calories:270, protein:12, carbs:35, fat:9, fiber:9, sugar:5, sodium:550 },
+    { id:"paneer", name:"Paneer", serving:"100g", g:100, calories:290, protein:18, carbs:6, fat:22, fiber:0, sugar:1, sodium:18 },
+    { id:"palak-paneer", name:"Palak Paneer", serving:"1 cup (200g)", g:200, calories:280, protein:14, carbs:14, fat:20, fiber:5, sugar:3, sodium:600 },
+    { id:"okra-sabji", name:"Okra Sabji (Bhindi)", serving:"1 cup (150g)", g:150, calories:90, protein:3, carbs:12, fat:4, fiber:5, sugar:3, sodium:300 },
+    { id:"aloo-sabji", name:"Aloo Sabji", serving:"1 cup (150g)", g:150, calories:180, protein:3, carbs:28, fat:7, fiber:3, sugar:2, sodium:400 },
+    { id:"eggs-bhurji", name:"Eggs Bhurji", serving:"2 eggs (120g)", g:120, calories:200, protein:13, carbs:3, fat:15, fiber:1, sugar:1, sodium:280 },
+    { id:"boiled-eggs", name:"Boiled Eggs", serving:"2 eggs (100g)", g:100, calories:155, protein:13, carbs:1, fat:11, fiber:0, sugar:0, sodium:124 },
+    { id:"omelette", name:"Omelette (2 eggs)", serving:"2 eggs (110g)", g:110, calories:190, protein:13, carbs:1, fat:14, fiber:0, sugar:1, sodium:200 },
+    { id:"idli", name:"Idli", serving:"2 pieces (80g)", g:80, calories:120, protein:4, carbs:25, fat:0.5, fiber:1, sugar:0, sodium:200 },
+    { id:"dosa", name:"Plain Dosa", serving:"1 piece (130g)", g:130, calories:170, protein:4, carbs:25, fat:6, fiber:1, sugar:0, sodium:250 },
+    { id:"poha", name:"Poha", serving:"1 cup (180g)", g:180, calories:230, protein:5, carbs:42, fat:5, fiber:2, sugar:2, sodium:350 },
+    { id:"upma", name:"Upma", serving:"1 cup (180g)", g:180, calories:220, protein:6, carbs:35, fat:7, fiber:2, sugar:2, sodium:380 },
+    { id:"curd", name:"Curd / Yogurt (plain)", serving:"1 cup (200g)", g:200, calories:120, protein:7, carbs:9, fat:6, fiber:0, sugar:9, sodium:90 },
+    { id:"greek-yogurt", name:"Greek Yogurt (plain)", serving:"1 cup (200g)", g:200, calories:130, protein:20, carbs:8, fat:1, fiber:0, sugar:8, sodium:75 },
+    { id:"banana", name:"Banana", serving:"1 medium (118g)", g:118, calories:105, protein:1.3, carbs:27, fat:0.4, fiber:3.1, sugar:14, sodium:1 },
+    { id:"apple", name:"Apple", serving:"1 medium (182g)", g:182, calories:95, protein:0.5, carbs:25, fat:0.3, fiber:4, sugar:19, sodium:2 },
+    { id:"orange", name:"Orange", serving:"1 medium (131g)", g:131, calories:62, protein:1.2, carbs:15, fat:0.2, fiber:3, sugar:12, sodium:0 },
+    { id:"mango", name:"Mango", serving:"1 cup (165g)", g:165, calories:99, protein:1.4, carbs:25, fat:0.6, fiber:2.6, sugar:23, sodium:2 },
+    { id:"musk-melon", name:"Musk Melon", serving:"1 cup (160g)", g:160, calories:54, protein:1.3, carbs:13, fat:0.3, fiber:1.4, sugar:13, sodium:25 },
+    { id:"ice-apple", name:"Ice Apple (Nungu)", serving:"2 pieces (90g)", g:90, calories:43, protein:0.9, carbs:11, fat:0.1, fiber:1, sugar:8, sodium:1 },
+    { id:"watermelon", name:"Watermelon", serving:"1 cup (150g)", g:150, calories:46, protein:0.9, carbs:11, fat:0.2, fiber:0.6, sugar:9, sodium:2 },
+    { id:"grapes", name:"Grapes", serving:"1 cup (150g)", g:150, calories:104, protein:1.1, carbs:27, fat:0.2, fiber:1.4, sugar:23, sodium:3 },
+    { id:"chicken-breast", name:"Chicken Breast (grilled)", serving:"100g", g:100, calories:165, protein:31, carbs:0, fat:3.6, fiber:0, sugar:0, sodium:74 },
+    { id:"chicken-curry", name:"Chicken Curry", serving:"1 cup (200g)", g:200, calories:300, protein:25, carbs:8, fat:18, fiber:2, sugar:4, sodium:600 },
+    { id:"chicken-tikka", name:"Chicken Tikka", serving:"100g", g:100, calories:180, protein:28, carbs:2, fat:7, fiber:0, sugar:1, sodium:380 },
+    { id:"fish-fillet", name:"Fish Fillet (grilled)", serving:"100g", g:100, calories:140, protein:24, carbs:0, fat:4, fiber:0, sugar:0, sodium:60 },
+    { id:"salmon", name:"Salmon (grilled)", serving:"100g", g:100, calories:208, protein:22, carbs:0, fat:13, fiber:0, sugar:0, sodium:59 },
+    { id:"whey-protein", name:"Whey Protein", serving:"1 scoop (30g)", g:30, calories:120, protein:24, carbs:3, fat:1.5, fiber:0, sugar:2, sodium:50 },
+    { id:"oats", name:"Oats (cooked)", serving:"1 cup (240g)", g:240, calories:160, protein:6, carbs:28, fat:3, fiber:4, sugar:1, sodium:9 },
+    { id:"quinoa", name:"Quinoa (cooked)", serving:"1 cup (185g)", g:185, calories:222, protein:8, carbs:39, fat:4, fiber:5, sugar:2, sodium:13 },
+    { id:"bread", name:"Whole Wheat Bread", serving:"1 slice (28g)", g:28, calories:80, protein:4, carbs:14, fat:1, fiber:2, sugar:1, sodium:140 },
+    { id:"pasta", name:"Pasta (cooked)", serving:"1 cup (140g)", g:140, calories:200, protein:7, carbs:42, fat:1, fiber:2, sugar:1, sodium:1 },
+    { id:"almonds", name:"Almonds", serving:"1 oz (28g)", g:28, calories:164, protein:6, carbs:6, fat:14, fiber:3.5, sugar:1.2, sodium:0 },
+    { id:"cashews", name:"Cashews", serving:"1 oz (28g)", g:28, calories:157, protein:5, carbs:9, fat:12, fiber:0.9, sugar:1.7, sodium:3 },
+    { id:"peanut-butter", name:"Peanut Butter", serving:"2 tbsp (32g)", g:32, calories:188, protein:8, carbs:7, fat:16, fiber:2, sugar:3, sodium:152 },
+    { id:"milk-whole", name:"Whole Milk", serving:"1 cup (240ml)", g:240, calories:149, protein:8, carbs:12, fat:8, fiber:0, sugar:12, sodium:105 },
+    { id:"milk-skim", name:"Skim Milk", serving:"1 cup (240ml)", g:240, calories:83, protein:8, carbs:12, fat:0.2, fiber:0, sugar:12, sodium:103 },
+    { id:"coffee-black", name:"Coffee (black)", serving:"1 cup (240ml)", g:240, calories:2, protein:0.3, carbs:0, fat:0, fiber:0, sugar:0, sodium:5 },
+    { id:"tea-milk", name:"Tea with Milk & Sugar", serving:"1 cup (240ml)", g:240, calories:75, protein:2, carbs:12, fat:2, fiber:0, sugar:10, sodium:30 },
+    { id:"avocado", name:"Avocado", serving:"1/2 medium (100g)", g:100, calories:160, protein:2, carbs:9, fat:15, fiber:7, sugar:0.7, sodium:7 },
+    { id:"sweet-potato", name:"Sweet Potato (baked)", serving:"1 medium (130g)", g:130, calories:103, protein:2.3, carbs:24, fat:0.2, fiber:3.8, sugar:7.4, sodium:41 },
+    { id:"broccoli", name:"Broccoli (steamed)", serving:"1 cup (156g)", g:156, calories:55, protein:3.7, carbs:11, fat:0.6, fiber:5.1, sugar:2.2, sodium:64 }
   ];
+
+  /* ---------- Weight-based nutrition scaling ----------
+     Every food (built-in or custom) stores macros for a reference weight `g` (grams/ml).
+     scaleFoodToWeight(food, grams) applies the (grams / g) adjustment factor to derive the
+     nutrition for whatever weight was actually logged — this is how weight-based logging
+     (feature: adjust portion weight, macros recompute automatically) is implemented everywhere. */
+  function foodBaseGrams(food) { return (food && food.g) || 100; }
+  function scaleFoodToWeight(food, grams) {
+    const base = foodBaseGrams(food);
+    const factor = base > 0 ? (Number(grams) || 0) / base : 0;
+    const r1 = (n) => Math.round((Number(n) || 0) * factor * 10) / 10;
+    const r0 = (n) => Math.round((Number(n) || 0) * factor);
+    return {
+      calories: r0(food.calories), protein: r1(food.protein), carbs: r1(food.carbs), fat: r1(food.fat),
+      fiber: r1(food.fiber), sugar: r1(food.sugar), sodium: r0(food.sodium)
+    };
+  }
 
   const mockProvider = {
     id: "mock",
@@ -1282,45 +1306,103 @@
   const EXERCISE_LIBRARY = [
     { name: "Bench Press", category: "Chest", sets: 4, reps: 8 },
     { name: "Incline Dumbbell Press", category: "Chest", sets: 3, reps: 10 },
+    { name: "Decline Bench Press", category: "Chest", sets: 3, reps: 8 },
     { name: "Push-up", category: "Chest", sets: 3, reps: 15 },
     { name: "Cable Fly", category: "Chest", sets: 3, reps: 12 },
+    { name: "Dumbbell Fly", category: "Chest", sets: 3, reps: 12 },
     { name: "Dumbbell Chest Press", category: "Chest", sets: 3, reps: 10 },
+    { name: "Pec Deck", category: "Chest", sets: 3, reps: 12 },
+    { name: "Landmine Press", category: "Chest", sets: 3, reps: 10 },
+    { name: "Diamond Push-up", category: "Chest", sets: 3, reps: 12 },
     { name: "Squat", category: "Legs", sets: 5, reps: 5 },
+    { name: "Front Squat", category: "Legs", sets: 4, reps: 6 },
+    { name: "Hack Squat", category: "Legs", sets: 4, reps: 10 },
+    { name: "Bulgarian Split Squat", category: "Legs", sets: 3, reps: 10 },
     { name: "Romanian Deadlift", category: "Legs", sets: 4, reps: 8 },
+    { name: "Sumo Deadlift", category: "Legs", sets: 4, reps: 5 },
     { name: "Leg Press", category: "Legs", sets: 4, reps: 10 },
     { name: "Leg Curl", category: "Legs", sets: 3, reps: 12 },
     { name: "Leg Extension", category: "Legs", sets: 3, reps: 12 },
     { name: "Walking Lunge", category: "Legs", sets: 3, reps: 12 },
+    { name: "Hip Thrust", category: "Legs", sets: 4, reps: 10 },
     { name: "Calf Raise", category: "Legs", sets: 4, reps: 15 },
+    { name: "Seated Calf Raise", category: "Legs", sets: 4, reps: 15 },
+    { name: "Hip Abduction", category: "Legs", sets: 3, reps: 15 },
+    { name: "Box Jump", category: "Legs", sets: 3, reps: 10 },
     { name: "Deadlift", category: "Back", sets: 4, reps: 5 },
     { name: "Barbell Row", category: "Back", sets: 4, reps: 8 },
+    { name: "Single-Arm Dumbbell Row", category: "Back", sets: 3, reps: 10 },
+    { name: "T-Bar Row", category: "Back", sets: 4, reps: 10 },
     { name: "Lat Pulldown", category: "Back", sets: 4, reps: 10 },
     { name: "Pull-up", category: "Back", sets: 3, reps: 8 },
+    { name: "Chin-up", category: "Back", sets: 3, reps: 8 },
     { name: "Seated Cable Row", category: "Back", sets: 3, reps: 10 },
+    { name: "Straight-Arm Pulldown", category: "Back", sets: 3, reps: 12 },
     { name: "Face Pull", category: "Back", sets: 3, reps: 15 },
+    { name: "Good Morning", category: "Back", sets: 3, reps: 10 },
+    { name: "Shrugs", category: "Back", sets: 3, reps: 15 },
     { name: "Overhead Press", category: "Shoulders", sets: 4, reps: 8 },
+    { name: "Machine Shoulder Press", category: "Shoulders", sets: 3, reps: 10 },
     { name: "Lateral Raise", category: "Shoulders", sets: 3, reps: 15 },
+    { name: "Cable Lateral Raise", category: "Shoulders", sets: 3, reps: 15 },
+    { name: "Front Raise", category: "Shoulders", sets: 3, reps: 12 },
     { name: "Rear Delt Fly", category: "Shoulders", sets: 3, reps: 15 },
     { name: "Arnold Press", category: "Shoulders", sets: 3, reps: 10 },
+    { name: "Upright Row", category: "Shoulders", sets: 3, reps: 12 },
     { name: "Bicep Curl", category: "Arms", sets: 3, reps: 12 },
     { name: "Hammer Curl", category: "Arms", sets: 3, reps: 12 },
+    { name: "Preacher Curl", category: "Arms", sets: 3, reps: 10 },
+    { name: "Cable Curl", category: "Arms", sets: 3, reps: 12 },
+    { name: "Concentration Curl", category: "Arms", sets: 3, reps: 12 },
     { name: "Triceps Pushdown", category: "Arms", sets: 3, reps: 12 },
+    { name: "Overhead Triceps Extension", category: "Arms", sets: 3, reps: 12 },
     { name: "Skull Crusher", category: "Arms", sets: 3, reps: 10 },
+    { name: "Close-Grip Bench Press", category: "Arms", sets: 3, reps: 8 },
     { name: "Dips", category: "Arms", sets: 3, reps: 10 },
     { name: "Plank", category: "Core", sets: 3, reps: 1 },
+    { name: "Side Plank", category: "Core", sets: 3, reps: 1 },
     { name: "Hanging Leg Raise", category: "Core", sets: 3, reps: 12 },
     { name: "Cable Crunch", category: "Core", sets: 3, reps: 15 },
     { name: "Russian Twist", category: "Core", sets: 3, reps: 20 },
+    { name: "Sit-up", category: "Core", sets: 3, reps: 20 },
+    { name: "V-Up", category: "Core", sets: 3, reps: 15 },
+    { name: "Bicycle Crunch", category: "Core", sets: 3, reps: 20 },
+    { name: "Ab Wheel Rollout", category: "Core", sets: 3, reps: 10 },
     { name: "Kettlebell Swing", category: "Full Body", sets: 4, reps: 15 },
     { name: "Goblet Squat", category: "Full Body", sets: 3, reps: 12 },
     { name: "Burpees", category: "Full Body", sets: 3, reps: 15 },
     { name: "Mountain Climbers", category: "Full Body", sets: 3, reps: 20 },
-    { name: "Clean and Press", category: "Full Body", sets: 4, reps: 6 }
+    { name: "Clean and Press", category: "Full Body", sets: 4, reps: 6 },
+    { name: "Farmer's Carry", category: "Full Body", sets: 3, reps: 1 },
+    { name: "Thruster", category: "Full Body", sets: 4, reps: 10 },
+    { name: "Turkish Get-up", category: "Full Body", sets: 3, reps: 5 },
+    { name: "Sled Push", category: "Full Body", sets: 4, reps: 1 },
+    { name: "Battle Ropes", category: "Full Body", sets: 3, reps: 1 }
   ];
   const EXERCISE_CATEGORIES = ["All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"];
-  function findExerciseMeta(name) {
+  // Merge the built-in library with exercises the user has typed in manually and saved for reuse.
+  function combinedExerciseLibrary(data) {
+    const custom = ((data && data.customExercises) || []).filter(ce =>
+      !EXERCISE_LIBRARY.some(e => e.name.toLowerCase() === (ce.name || "").toLowerCase()));
+    return [...EXERCISE_LIBRARY, ...custom];
+  }
+  function findExerciseMeta(name, customExercises) {
     const n = (name || "").toLowerCase().trim();
-    return EXERCISE_LIBRARY.find(e => e.name.toLowerCase() === n) || null;
+    const extra = customExercises || [];
+    return EXERCISE_LIBRARY.find(e => e.name.toLowerCase() === n) || extra.find(e => e.name.toLowerCase() === n) || null;
+  }
+
+  /* ---------- Weight units (kg / lbs) ---------- */
+  const KG_PER_LB = 0.45359237;
+  function kgToLb(kg) { return (Number(kg) || 0) / KG_PER_LB; }
+  function lbToKg(lb) { return (Number(lb) || 0) * KG_PER_LB; }
+  // Round to a sensible display precision (0.5 for kg-scale plates, whole lb for lb-scale plates)
+  function displayWeight(kg, unit) {
+    if (unit === "lbs") return Math.round(kgToLb(kg) * 10) / 10;
+    return Math.round((Number(kg) || 0) * 10) / 10;
+  }
+  function weightInputToKg(value, unit) {
+    return unit === "lbs" ? lbToKg(value) : Number(value) || 0;
   }
 
   /* ---------- Workout templates (quick-start) ---------- */
@@ -1341,7 +1423,7 @@
   }
 
   /* ---------- Progressive-overload set suggestions ---------- */
-  function suggestSetsFor(exerciseName, days) {
+  function suggestSetsFor(exerciseName, days, customExercises) {
     const n = (exerciseName || "").toLowerCase().trim();
     let best = null, bestKey = null;
     Object.keys(days || {}).sort().reverse().forEach(k => {
@@ -1353,7 +1435,7 @@
     if (best && (best.sets || []).length) {
       const lastSets = best.sets.filter(s => !s.warmup);
       if (lastSets.length) {
-        const allHitTarget = lastSets.every(s => (Number(s.reps)||0) >= (findExerciseMeta(exerciseName) || { reps: 8 }).reps);
+        const allHitTarget = lastSets.every(s => (Number(s.reps)||0) >= (findExerciseMeta(exerciseName, customExercises) || { reps: 8 }).reps);
         const bump = allHitTarget ? 2.5 : 0;
         return {
           fromDate: bestKey,
@@ -1361,7 +1443,7 @@
         };
       }
     }
-    const meta = findExerciseMeta(exerciseName);
+    const meta = findExerciseMeta(exerciseName, customExercises);
     const n1 = meta ? meta.sets : 3;
     const r1 = meta ? meta.reps : 10;
     return { fromDate: null, sets: Array.from({ length: n1 }, () => ({ weight: 0, reps: r1, rpe: "" })) };
@@ -1823,8 +1905,10 @@
   }
 
   function EditFoodForm({ item, onSave, onCancel }) {
+    const weightBased = !!(item.baseNutrition && item.baseGrams);
     const [v, setV] = useState({
       qty: item.qty || 1,
+      grams: item.grams || item.baseGrams || 100,
       calories: item.calories || 0,
       protein: item.protein || 0,
       carbs: item.carbs || 0,
@@ -1835,8 +1919,18 @@
       serving: item.serving || ""
     });
     const onN = (k) => (e) => setV(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
+    const onWeight = (e) => {
+      const g = e.target.value === "" ? "" : Number(e.target.value);
+      if (g === "" || !weightBased) { setV(s => ({ ...s, grams: g })); return; }
+      const scaled = scaleFoodToWeight(item.baseNutrition, g);
+      setV(s => ({ ...s, grams: g, serving: g + "g", ...scaled }));
+    };
     return h("div", { style: { padding: "0 14px 14px", background: "var(--bg)", borderTop: "1px solid var(--border-soft)" } },
-      h("div", { className: "field-row", style: { marginTop: 10 } },
+      weightBased ? h("div", { className: "field", style: { marginTop: 10 } },
+        h("label", null, "Weight (g / ml)"),
+        h("input", { className: "input", type: "number", inputMode: "decimal", value: v.grams, onChange: onWeight }),
+        h("div", { style: { fontSize: 11, color: "var(--muted)", marginTop: 4 } }, "Macros below auto-update from this weight — you can still fine-tune them manually.")
+      ) : h("div", { className: "field-row", style: { marginTop: 10 } },
         h("div", null, h("label", null, "Servings"),
           h("input", { className: "input", type: "number", step: "0.25", value: v.qty, onChange: onN("qty") })),
         h("div", null, h("label", null, "Serving"),
@@ -1864,7 +1958,11 @@
       ),
       h("div", { className: "btn-row", style: { marginTop: 10 } },
         h("button", { className: "btn secondary", onClick: onCancel }, "Cancel"),
-        h("button", { className: "btn", onClick: () => onSave(Object.fromEntries(Object.entries(v).map(([k,val]) => [k, val === "" ? 0 : val]))) }, "Save")
+        h("button", { className: "btn", onClick: () => {
+          const out = Object.fromEntries(Object.entries(v).map(([k,val]) => [k, val === "" ? 0 : val]));
+          if (weightBased) out.qty = 1;
+          onSave(out);
+        } }, "Save")
       )
     );
   }
@@ -2039,6 +2137,8 @@
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState(null);
     const [mode, setMode] = useState("search"); // search | manual
+    const [selected, setSelected] = useState(null); // food picked from search, awaiting weight confirm
+    const [grams, setGrams] = useState(100);
     const toast = useToast();
     const inputRef = useRef();
 
@@ -2048,6 +2148,7 @@
         setResults([]);
         setErr(null);
         setMode("search");
+        setSelected(null);
         setTimeout(() => { try { inputRef.current && inputRef.current.focus(); } catch(e) {} }, 320);
       }
     }, [open]);
@@ -2080,7 +2181,13 @@
       return () => { cancelled = true; clearTimeout(t); };
     }, [query, open, data.providers, data.customFoods]);
 
-    const pick = (food) => {
+    const selectFood = (food) => {
+      setSelected(food);
+      setGrams(foodBaseGrams(food));
+    };
+
+    const commit = (food, weightGrams) => {
+      const scaled = scaleFoodToWeight(food, weightGrams);
       const next = { ...data };
       const d = ensureDay(next.days, activeDate);
       d.meals.push({
@@ -2088,95 +2195,171 @@
         slot: slot || "snacks",
         time: Date.now(),
         qty: 1,
-        ...food
+        name: food.name,
+        serving: weightGrams + "g",
+        grams: weightGrams,
+        baseGrams: foodBaseGrams(food),
+        baseNutrition: {
+          calories: food.calories||0, protein: food.protein||0, carbs: food.carbs||0, fat: food.fat||0,
+          fiber: food.fiber||0, sugar: food.sugar||0, sodium: food.sodium||0
+        },
+        ...scaled
       });
       setData(next);
       toast("Added " + food.name);
       onClose();
     };
 
+    // Manual entries already come pre-scaled to the logged weight (see ManualFoodEntry) — add as-is.
+    // foodForDb (optional) is saved to the food database in the SAME setData call as the meal push,
+    // since two separate setData calls in one handler would otherwise race on the stale `data` closure.
+    const pickManual = (food, foodForDb) => {
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      d.meals.push({ id: uid(), slot: slot || "snacks", time: Date.now(), qty: 1, ...food });
+      if (foodForDb) {
+        next.customFoods = [...(next.customFoods || []), { ...foodForDb, id: "custom-" + uid() }];
+      }
+      setData(next);
+      toast("Added " + food.name);
+      onClose();
+    };
+
     const slotName = (MEAL_SLOTS.find(s => s.id === slot) || {}).name || "meal";
+    const preview = selected ? scaleFoodToWeight(selected, grams) : null;
 
     return h(Sheet, { open, onClose, title: "Add to " + slotName },
       h("div", { className: "seg" },
-        h("button", { className: mode === "search" ? "active" : "", onClick: () => setMode("search") }, "Search"),
+        h("button", { className: mode === "search" ? "active" : "", onClick: () => { setMode("search"); setSelected(null); } }, "Search"),
         h("button", { className: mode === "manual" ? "active" : "", onClick: () => setMode("manual") }, "Manual entry")
       ),
-      mode === "search" ? h(React.Fragment, null,
-        h("div", { className: "field" },
-          h("input", {
-            ref: inputRef,
-            className: "input",
-            placeholder: "Search foods (e.g. jowar bhakri, eggs, banana)",
-            value: query,
-            onChange: (e) => setQuery(e.target.value),
-            autoComplete: "off",
-            autoCapitalize: "none"
-          })
-        ),
-        h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 8 } },
-          "Source: " + PROVIDERS[data.providers.active].name +
-          (data.providers.active === "mock" ? " · works offline" : "")
-        ),
-        loading && h("div", { style: { padding: 20, textAlign: "center", color: "var(--muted)" } }, "Searching..."),
-        err && h("div", { style: { padding: 12, background: "var(--danger-soft)", color: "var(--danger)", borderRadius: 10, fontSize: 13 } }, err),
-        !loading && !err && query.length > 0 && results.length === 0 && h("div", { style: { padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 } },
-          "No matches. Try \"manual entry\" to add it yourself."),
-        h("div", { className: "search-list" },
-          results.map(r => h("div", { key: r.id, className: "search-item", onClick: () => pick(r) },
-            h("div", { style: { flex: 1, minWidth: 0 } },
-              h("div", { className: "nm" }, r.name),
-              h("div", { className: "sv" }, r.serving + " · P" + Math.round(r.protein||0) + " C" + Math.round(r.carbs||0) + " F" + Math.round(r.fat||0))
-            ),
-            h("div", { className: "cal" }, Math.round(r.calories||0) + " kcal")
-          ))
+      mode === "search" ? (
+        selected ? h("div", null,
+          h("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 2 } }, selected.name),
+          h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 14 } },
+            "Base: " + (selected.serving || (foodBaseGrams(selected) + "g")) + " · adjust weight below and macros update automatically"),
+          h("div", { className: "field" },
+            h("label", null, "Weight logged (g / ml)"),
+            h("input", {
+              className: "input", type: "number", inputMode: "decimal", min: 0, autoFocus: true,
+              value: grams, onChange: (e) => setGrams(e.target.value === "" ? "" : Number(e.target.value))
+            })
+          ),
+          h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 } },
+            [foodBaseGrams(selected), 50, 100, 150, 200, 250].filter((v,i,a) => a.indexOf(v)===i).map(g => h("button", {
+              key: g, className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px" }, onClick: () => setGrams(g)
+            }, g + "g"))
+          ),
+          preview && h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 12, marginBottom: 14 } },
+            h("div", { style: { fontSize: 18, fontWeight: 700 } }, preview.calories + " kcal"),
+            h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginTop: 3 } },
+              "P" + preview.protein + "g · C" + preview.carbs + "g · F" + preview.fat + "g")
+          ),
+          h("div", { className: "btn-row" },
+            h("button", { className: "btn secondary", onClick: () => setSelected(null) }, "Back"),
+            h("button", { className: "btn", disabled: !grams || grams <= 0, onClick: () => commit(selected, Number(grams)) }, "Add to meal")
+          )
+        ) : h(React.Fragment, null,
+          h("div", { className: "field" },
+            h("input", {
+              ref: inputRef,
+              className: "input",
+              placeholder: "Search foods (e.g. jowar bhakri, eggs, banana)",
+              value: query,
+              onChange: (e) => setQuery(e.target.value),
+              autoComplete: "off",
+              autoCapitalize: "none"
+            })
+          ),
+          h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 8 } },
+            "Source: " + PROVIDERS[data.providers.active].name +
+            (data.providers.active === "mock" ? " · works offline" : "")
+          ),
+          loading && h("div", { style: { padding: 20, textAlign: "center", color: "var(--muted)" } }, "Searching..."),
+          err && h("div", { style: { padding: 12, background: "var(--danger-soft)", color: "var(--danger)", borderRadius: 10, fontSize: 13 } }, err),
+          !loading && !err && query.length > 0 && results.length === 0 && h("div", { style: { padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 } },
+            "No matches. Try \"manual entry\" to add it yourself."),
+          h("div", { className: "search-list" },
+            results.map(r => h("div", { key: r.id, className: "search-item", onClick: () => selectFood(r) },
+              h("div", { style: { flex: 1, minWidth: 0 } },
+                h("div", { className: "nm" }, r.name),
+                h("div", { className: "sv" }, r.serving + " · P" + Math.round(r.protein||0) + " C" + Math.round(r.carbs||0) + " F" + Math.round(r.fat||0))
+              ),
+              h("div", { className: "cal" }, Math.round(r.calories||0) + " kcal")
+            ))
+          )
         )
-      ) : h(ManualFoodEntry, { onAdd: pick, onSaveCustom: (food) => {
-        const next = { ...data, customFoods: [...(data.customFoods || []), { ...food, id: "custom-" + uid() }] };
-        setData(next);
-        toast("Saved to your foods");
-      } })
+      ) : h(ManualFoodEntry, { onAdd: pickManual })
     );
   }
 
-  function ManualFoodEntry({ onAdd, onSaveCustom }) {
+  function ManualFoodEntry({ onAdd }) {
+    // Nutrition is entered per 100g/100ml (a fixed, reusable basis) plus the weight of the portion
+    // actually being logged today — macros for that portion are derived automatically, and the
+    // per-100g values can be saved straight into the food database for next time.
     const [v, setV] = useState({
-      name: "", serving: "1 serving", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0
+      name: "", grams: 100, calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0
     });
+    const [saveForFuture, setSaveForFuture] = useState(true);
     const onN = (k) => (e) => setV(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
-    const valid = v.name.trim().length > 0;
+    const valid = v.name.trim().length > 0 && Number(v.grams) > 0;
+    const per100 = { g: 100, calories: v.calories||0, protein: v.protein||0, carbs: v.carbs||0, fat: v.fat||0, fiber: v.fiber||0, sugar: v.sugar||0, sodium: v.sodium||0 };
+    const portion = scaleFoodToWeight(per100, Number(v.grams) || 0);
+
+    const submit = () => {
+      const scaled = scaleFoodToWeight(per100, Number(v.grams) || 0);
+      const foodForDb = saveForFuture
+        ? { name: v.name.trim(), serving: "100g", g: 100, calories: per100.calories, protein: per100.protein, carbs: per100.carbs, fat: per100.fat, fiber: per100.fiber, sugar: per100.sugar, sodium: per100.sodium }
+        : null;
+      onAdd({
+        id: "manual-" + uid(), name: v.name.trim(), serving: v.grams + "g", grams: Number(v.grams) || 0,
+        baseGrams: 100, baseNutrition: { calories: per100.calories, protein: per100.protein, carbs: per100.carbs, fat: per100.fat, fiber: per100.fiber, sugar: per100.sugar, sodium: per100.sodium },
+        ...scaled
+      }, foodForDb);
+    };
+
     return h("div", null,
       h("div", { className: "field" },
         h("label", null, "Name"),
         h("input", { className: "input", value: v.name, onChange: (e) => setV(s => ({ ...s, name: e.target.value })), placeholder: "e.g. Mom's biryani" })
       ),
-      h("div", { className: "field" },
-        h("label", null, "Serving"),
-        h("input", { className: "input", value: v.serving, onChange: (e) => setV(s => ({ ...s, serving: e.target.value })) })
-      ),
-      h("div", { className: "field-row" },
-        h("div", null, h("label", null, "Calories"),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", margin: "-4px 0 10px" } }, "Nutrition below is per 100g / 100ml — enter it once, reuse forever."),
+      h("div", { className: "field-row3" },
+        h("div", null, h("label", null, "Calories /100g"),
           h("input", { className: "input", type: "number", value: v.calories, onChange: onN("calories") })),
-        h("div", null, h("label", null, "Protein (g)"),
-          h("input", { className: "input", type: "number", step: "0.1", value: v.protein, onChange: onN("protein") }))
-      ),
-      h("div", { className: "field-row", style: { marginTop: 8 } },
-        h("div", null, h("label", null, "Carbs (g)"),
-          h("input", { className: "input", type: "number", step: "0.1", value: v.carbs, onChange: onN("carbs") })),
-        h("div", null, h("label", null, "Fat (g)"),
-          h("input", { className: "input", type: "number", step: "0.1", value: v.fat, onChange: onN("fat") }))
+        h("div", null, h("label", null, "Protein /100g"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.protein, onChange: onN("protein") })),
+        h("div", null, h("label", null, "Carbs /100g"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.carbs, onChange: onN("carbs") }))
       ),
       h("div", { className: "field-row3", style: { marginTop: 8 } },
-        h("div", null, h("label", null, "Fiber"),
+        h("div", null, h("label", null, "Fat /100g"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.fat, onChange: onN("fat") })),
+        h("div", null, h("label", null, "Fiber /100g"),
           h("input", { className: "input", type: "number", step: "0.1", value: v.fiber, onChange: onN("fiber") })),
-        h("div", null, h("label", null, "Sugar"),
-          h("input", { className: "input", type: "number", step: "0.1", value: v.sugar, onChange: onN("sugar") })),
-        h("div", null, h("label", null, "Sodium"),
-          h("input", { className: "input", type: "number", value: v.sodium, onChange: onN("sodium") }))
+        h("div", null, h("label", null, "Sugar /100g"),
+          h("input", { className: "input", type: "number", step: "0.1", value: v.sugar, onChange: onN("sugar") }))
       ),
-      h("div", { className: "btn-row", style: { marginTop: 14 } },
-        h("button", { className: "btn secondary", disabled: !valid, onClick: () => onSaveCustom({ ...v, calories: Number(v.calories)||0 }) }, "Save & log later"),
-        h("button", { className: "btn", disabled: !valid, onClick: () => onAdd({ id: "manual-" + uid(), ...v, calories: Number(v.calories)||0 }) }, "Add to meal")
+      h("div", { className: "field", style: { marginTop: 8 } },
+        h("label", null, "Sodium /100g (mg)"),
+        h("input", { className: "input", type: "number", value: v.sodium, onChange: onN("sodium") })
+      ),
+      h("hr", { className: "sep" }),
+      h("div", { className: "field" },
+        h("label", null, "Weight of the portion you're logging (g)"),
+        h("input", { className: "input", type: "number", inputMode: "decimal", value: v.grams, onChange: onN("grams") })
+      ),
+      valid && h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 12, marginBottom: 4 } },
+        h("div", { style: { fontSize: 18, fontWeight: 700 } }, portion.calories + " kcal"),
+        h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginTop: 3 } },
+          "P" + portion.protein + "g · C" + portion.carbs + "g · F" + portion.fat + "g for " + v.grams + "g")
+      ),
+      h("label", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 14, cursor: "pointer" } },
+        h("input", { type: "checkbox", checked: saveForFuture, onChange: (e) => setSaveForFuture(e.target.checked), style: { width: 16, height: 16 } }),
+        h("span", { style: { fontSize: 12.5, color: "var(--text)" } }, "Save this dish to my food database for future use")
+      ),
+      h("div", { className: "btn-row", style: { marginTop: 10 } },
+        h("button", { className: "btn", disabled: !valid, onClick: submit }, "Add to meal")
       )
     );
   }
@@ -2206,13 +2389,17 @@
       d.workouts = d.workouts.filter(w => w.id !== id);
       setData(next);
     };
+    const toggleUnit = (name) => {
+      const cur = (data.exerciseUnits || {})[name] || "kg";
+      setData({ ...data, exerciseUnits: { ...(data.exerciseUnits || {}), [name]: cur === "lbs" ? "kg" : "lbs" } });
+    };
 
     const strengthWorkouts = wOut.filter(w => w.type === "strength");
     const sessionTotals = strengthWorkouts.reduce((s, w) => {
       const t = exerciseTotals(w);
       return { weight: s.weight + t.totalWeight, reps: s.reps + t.totalReps, sets: s.sets + (w.sets||[]).length };
     }, { weight: 0, reps: 0, sets: 0 });
-    const muscleChips = [...new Set(strengthWorkouts.map(w => (findExerciseMeta(w.name)||{}).category).filter(Boolean))];
+    const muscleChips = [...new Set(strengthWorkouts.map(w => (findExerciseMeta(w.name, data.customExercises)||{}).category).filter(Boolean))];
     const templates = templatesForGoal(data.profile.goal);
 
     return h("div", null,
@@ -2262,7 +2449,11 @@
         h("div", { className: "s" }, "Tap the + button, or pick a quick-start template above")
       ) : null,
       wOut.map(w => w.type === "strength"
-        ? h(StrengthCard, { key: w.id, w, prs: data.prs || {}, allDays: data.days, onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id) })
+        ? h(StrengthCard, {
+            key: w.id, w, prs: data.prs || {}, allDays: data.days, customExercises: data.customExercises,
+            unit: (data.exerciseUnits || {})[w.name] || "kg", onToggleUnit: () => toggleUnit(w.name),
+            onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id)
+          })
         : h(CardioCard, { key: w.id, w, onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id) })
       ),
       h(TemplatePreviewSheet, { open: !!template, onClose: () => setTemplate(null), template, data, setData, activeDate })
@@ -2284,13 +2475,19 @@
     return weight * reps > max;
   }
 
-  function StrengthCard({ w, prs, allDays, onChange, onRemove }) {
+  function StrengthCard({ w, prs, allDays, customExercises, unit, onToggleUnit, onChange, onRemove }) {
     const setsArr = w.sets || [];
-    const meta = findExerciseMeta(w.name);
+    const meta = findExerciseMeta(w.name, customExercises);
     const category = meta ? meta.category : null;
+    const u = unit || "kg";
     const updateSet = (i, patch) => {
       const sets = setsArr.map((s, idx) => idx === i ? { ...s, ...patch } : s);
       onChange({ sets });
+    };
+    const updateWeight = (i, rawValue) => {
+      if (rawValue === "") { updateSet(i, { weight: "" }); return; }
+      const kg = weightInputToKg(Number(rawValue), u);
+      updateSet(i, { weight: Math.round(kg * 100) / 100 });
     };
     const addSet = () => {
       const last = setsArr[setsArr.length - 1] || { weight: 0, reps: 8 };
@@ -2320,12 +2517,16 @@
             category && h("span", { className: "muscle-chip", style: { marginLeft: 6, background: MUSCLE_SOFT[category], color: MUSCLE_COLORS[category] } }, category),
             " · " + setsArr.length + " sets · " + w.calories + " kcal")
         ),
-        h("button", { className: "icon-btn-sm danger", onClick: () => { if (confirm("Remove workout?")) onRemove(); } }, Icon("trash", 18))
+        h("button", {
+          className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700, flex: "0 0 auto" },
+          onClick: onToggleUnit, title: "Switch weight unit"
+        }, u === "lbs" ? "LB" : "KG"),
+        h("button", { className: "icon-btn-sm danger", style: { marginLeft: 6 }, onClick: () => { if (confirm("Remove workout?")) onRemove(); } }, Icon("trash", 18))
       ),
       h("div", { className: "sets-table" },
         h("div", { className: "hdr" },
           h("div", null, "#"),
-          h("div", null, "Weight"),
+          h("div", null, "Weight (" + u + ")"),
           h("div", null, "Reps"),
           h("div", null, "RPE"),
           h("div", null, "")
@@ -2333,11 +2534,12 @@
         setsArr.map((s, i) => {
           const pr = !s.warmup && isPR(w.name, Number(s.weight), Number(s.reps), allDays, w.id);
           if (!s.warmup) workingIdx++;
+          const shownWeight = s.weight === "" || s.weight === undefined || s.weight === null ? "" : displayWeight(s.weight, u);
           return h("div", { className: "set-row" + (s.warmup ? "" : ""), key: i, style: s.warmup ? { opacity: 0.7 } : null },
             h("div", { className: "n", onClick: () => toggleWarmup(i), style: { cursor: "pointer" }, title: "Tap to toggle warm-up" },
               s.warmup ? "W" : workingIdx, pr ? " 🏆" : "", s.warmup && h("span", { className: "warmup-tag" }, "WARM")
             ),
-            h("input", { type: "number", inputMode: "decimal", placeholder: "kg", value: s.weight ?? "", onChange: (e) => updateSet(i, { weight: e.target.value === "" ? "" : Number(e.target.value) }) }),
+            h("input", { type: "number", inputMode: "decimal", placeholder: u, value: shownWeight, onChange: (e) => updateWeight(i, e.target.value) }),
             h("input", { type: "number", inputMode: "numeric", placeholder: "reps", value: s.reps ?? "", onChange: (e) => updateSet(i, { reps: e.target.value === "" ? "" : Number(e.target.value) }) }),
             h("input", { type: "number", inputMode: "decimal", step: "0.5", placeholder: "@", value: s.rpe ?? "", onChange: (e) => updateSet(i, { rpe: e.target.value === "" ? "" : Number(e.target.value) }) }),
             h("button", { className: "icon-btn-sm danger", onClick: () => removeSet(i) }, Icon("close", 16))
@@ -2351,7 +2553,7 @@
       setsArr.length > 0 && h("div", { className: "exercise-totals-row" },
         h("div", { className: "cell" }, h("div", { className: "v" }, (totals.totalWeight/1000).toFixed(2) + " t"), h("div", { className: "l" }, "Total weight")),
         h("div", { className: "cell" }, h("div", { className: "v" }, totals.totalReps), h("div", { className: "l" }, "Total reps")),
-        h("div", { className: "cell" }, h("div", { className: "v" }, Math.round(totals.avgWeight*10)/10 + "kg"), h("div", { className: "l" }, "Avg weight"))
+        h("div", { className: "cell" }, h("div", { className: "v" }, displayWeight(totals.avgWeight, u) + u), h("div", { className: "l" }, "Avg weight"))
       ),
       h("textarea", {
         className: "notes-input",
@@ -2439,9 +2641,15 @@
 
     const pickExercise = (nm) => {
       setName(nm);
-      setSuggestion(suggestSetsFor(nm, data.days));
+      setSuggestion(suggestSetsFor(nm, data.days, data.customExercises));
       setBrowsing(false);
     };
+
+    const knownExercise = useMemo(() => {
+      const n = name.trim().toLowerCase();
+      if (!n) return true;
+      return combinedExerciseLibrary(data).some(e => e.name.toLowerCase() === n);
+    }, [name, data.customExercises]);
 
     const curMachine = getMachine(machine);
     const previewCardioCalories = useMemo(() => {
@@ -2460,6 +2668,10 @@
         const sets = suggestion ? suggestion.sets.map(s => ({ ...s })) : [{ weight: 0, reps: 8, rpe: "" }];
         w = { id: uid(), type: "strength", name: nm, sets, notes: "", time: Date.now(), calories: 0 };
         w.calories = strengthCalories(w, next.profile.weightKg);
+        const known = combinedExerciseLibrary(next).some(e => e.name.toLowerCase() === nm.toLowerCase());
+        if (!known) {
+          next.customExercises = [...(next.customExercises || []), { name: nm, category: "Full Body", sets: 3, reps: 10 }];
+        }
       } else {
         w = {
           id: uid(), type: "cardio", name: nm,
@@ -2495,7 +2707,9 @@
               autoCapitalize: "words"
             }),
             h("button", { className: "btn secondary", style: { width: "auto", padding: "0 14px" }, onClick: () => setBrowsing(!browsing) }, browsing ? "Close" : "Browse")
-          )
+          ),
+          name.trim().length > 0 && !knownExercise && h("div", { style: { fontSize: 11, color: "var(--primary)", marginTop: 6 } },
+            "🆕 New exercise — it'll be saved to your list for next time")
         ),
         !browsing && recentExercises.length > 0 && h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
           recentExercises.map(rx => h("button", {
@@ -2510,7 +2724,7 @@
             EXERCISE_CATEGORIES.map(c => h("button", { key: c, className: cat === c ? "active" : "", onClick: () => setCat(c) }, c))
           ),
           h("div", { style: { maxHeight: "38vh", overflowY: "auto" } },
-            EXERCISE_LIBRARY.filter(e => cat === "All" || e.category === cat).map(e => h("div", {
+            combinedExerciseLibrary(data).filter(e => cat === "All" || e.category === cat).map(e => h("div", {
               key: e.name, className: "exercise-item", onClick: () => pickExercise(e.name)
             },
               h("div", null,
@@ -2596,7 +2810,7 @@
   function TemplatePreviewSheet({ open, onClose, template, data, setData, activeDate }) {
     const preview = useMemo(() => {
       if (!template) return [];
-      return template.exercises.map(nm => ({ name: nm, ...suggestSetsFor(nm, data.days) }));
+      return template.exercises.map(nm => ({ name: nm, ...suggestSetsFor(nm, data.days, data.customExercises) }));
     }, [template, open]);
     const totalCalEst = useMemo(() => {
       return preview.reduce((s, p) => {
@@ -2725,7 +2939,8 @@
     return max;
   }
 
-  function StrengthGoalRing({ label, current, target, color }) {
+  function StrengthGoalRing({ label, current, target, color, unit }) {
+    const u = unit || "kg";
     const pct = target ? Math.min(100, (current/target)*100) : 0;
     const size = 84, stroke = 8, r = (size - stroke) / 2;
     const c = 2 * Math.PI * r;
@@ -2739,7 +2954,105 @@
         h("div", { className: "ring-center" }, Math.round(pct) + "%")
       ),
       h("div", { className: "lbl" }, label),
-      h("div", { className: "sub" }, current + " / " + target + "kg")
+      h("div", { className: "sub" }, displayWeight(current, u) + " / " + displayWeight(target, u) + u)
+    );
+  }
+  // squat/bench/deadlift keep their friendly labels; anything the user adds shows its exercise name as-is.
+  function goalLabel(key) {
+    const map = { squat: "Squat", bench: "Bench Press", deadlift: "Deadlift" };
+    return map[key] || key;
+  }
+  const GOAL_RING_COLORS = ["var(--warning)", "var(--gold)", "var(--danger)", "var(--blue)", "var(--violet)", "var(--success)", "var(--primary)"];
+
+  /* ---------- Exercise progress trend (Stats) ---------- */
+  function ExerciseTrendSVG({ points, unit, color }) {
+    const w = 320, ht = 150, pad = 16;
+    const vals = points.map(p => displayWeight(p.avgKg, unit));
+    const minV = Math.min(...vals), maxV = Math.max(...vals);
+    const range = (maxV - minV) || 1;
+    const pts = points.map((p, i) => {
+      const x = points.length > 1 ? pad + (i / (points.length - 1)) * (w - pad*2) : w/2;
+      const y = points.length > 1
+        ? ht - pad - ((displayWeight(p.avgKg, unit) - minV) / range) * (ht - pad*2)
+        : ht/2;
+      return [x, y];
+    });
+    const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+    return h("div", { className: "chart-svg-wrap" },
+      h("svg", { viewBox: "0 0 " + w + " " + ht, preserveAspectRatio: "none", width: "100%", height: ht },
+        [0,1,2,3].map(i => h("line", { key: i, x1: pad, x2: w-pad, y1: pad + i*(ht-pad*2)/3, y2: pad + i*(ht-pad*2)/3, stroke: "var(--border)", strokeWidth: 1, strokeDasharray: "3,3" })),
+        points.length > 1 && h("path", { d, stroke: color || "var(--success)", strokeWidth: 2.5, fill: "none", strokeLinecap: "round", strokeLinejoin: "round" }),
+        pts.map((p, i) => h("circle", { key: i, cx: p[0], cy: p[1], r: 4, fill: color || "var(--success)" }))
+      )
+    );
+  }
+  function ExerciseProgressChart({ data }) {
+    const [selected, setSelected] = useState("");
+    const exerciseNames = useMemo(() => {
+      const set = new Set();
+      Object.values(data.days || {}).forEach(d => (d.workouts || []).forEach(w => { if (w.type === "strength") set.add(w.name); }));
+      return [...set].sort((a,b) => a.localeCompare(b));
+    }, [data.days]);
+
+    useEffect(() => {
+      if (exerciseNames.length && !exerciseNames.includes(selected)) setSelected(exerciseNames[0]);
+    }, [exerciseNames.join("|")]);
+
+    const unit = (data.exerciseUnits || {})[selected] || "kg";
+
+    // One point per day the exercise was actually logged — days with no entry are simply skipped,
+    // so the line connects only real data points and gaps between sessions are never interpolated.
+    const points = useMemo(() => {
+      if (!selected) return [];
+      const out = [];
+      Object.keys(data.days || {}).sort().forEach(k => {
+        const d = data.days[k];
+        let sum = 0, count = 0;
+        (d.workouts || []).forEach(w => {
+          if (w.type === "strength" && w.name === selected) {
+            (w.sets || []).forEach(s => { if (!s.warmup && Number(s.weight) > 0) { sum += Number(s.weight); count++; } });
+          }
+        });
+        if (count > 0) out.push({ key: k, avgKg: sum / count });
+      });
+      return out;
+    }, [data.days, selected]);
+
+    if (exerciseNames.length === 0) {
+      return h("div", { className: "card" },
+        h("h2", null, "Exercise progress"),
+        h("div", { className: "empty-state" },
+          h("div", { className: "ic" }, "📈"),
+          h("div", { className: "t" }, "No strength workouts yet"),
+          h("div", { className: "s" }, "Log a few sessions to see your weight trend here")
+        )
+      );
+    }
+
+    const first = points[0], last = points[points.length - 1];
+    const deltaKg = points.length > 1 ? last.avgKg - first.avgKg : 0;
+
+    return h("div", { className: "card chart-card" },
+      h("div", { className: "ttl-row" },
+        h("h2", { style: { margin: 0 } }, "Exercise progress"),
+        h("select", {
+          className: "select", style: { width: "auto", maxWidth: "56%", padding: "6px 28px 6px 10px", fontSize: 12.5 },
+          value: selected, onChange: (e) => setSelected(e.target.value)
+        }, exerciseNames.map(n => h("option", { key: n, value: n }, n)))
+      ),
+      points.length === 0
+        ? h("div", { className: "empty-state" }, h("div", { className: "t" }, "No working sets logged for this exercise yet"))
+        : h(React.Fragment, null,
+            h(ExerciseTrendSVG, { points, unit }),
+            h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--muted)", marginTop: 8 } },
+              h("div", null, fmtDate(first.key) + " · " + displayWeight(first.avgKg, unit) + unit),
+              points.length > 1 && h("div", { style: { color: deltaKg >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 700, fontSize: 12.5 } },
+                (deltaKg >= 0 ? "+" : "") + displayWeight(deltaKg, unit) + unit + " over " + points.length + " sessions"),
+              h("div", null, fmtDate(last.key) + " · " + displayWeight(last.avgKg, unit) + unit)
+            ),
+            points.length < 2 && h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 8, textAlign: "center" } },
+              "Log this exercise a few more times to see a trend.")
+          )
     );
   }
 
@@ -2845,9 +3158,7 @@
     }, [data.days, range]);
 
     const goals = data.profile.goals || {};
-    const bestSquat = bestWeightForName(data.days, "squat");
-    const bestBench = bestWeightForName(data.days, "bench");
-    const bestDeadlift = bestWeightForName(data.days, "deadlift");
+    const goalKeys = Object.keys(goals);
 
     return h("div", null,
       h("div", { className: "header" }, h("div", null, h("h1", null, "Stats"), h("div", { className: "sub" }, "Training & nutrition overview"))),
@@ -2862,6 +3173,9 @@
         ),
         h(DualLineChart, { series, colorA: "var(--success)", colorB: "var(--muted-soft)", labelA: "Workouts", labelB: "Volume" })
       ),
+
+      // Per-exercise weight-lifted trend, with a dropdown to pick any exercise you've logged
+      h(ExerciseProgressChart, { data }),
 
       // Stat grid
       h("div", { className: "card" },
@@ -2920,12 +3234,13 @@
       ),
 
       // Strength goal rings
-      h("div", { className: "card" },
+      goalKeys.length > 0 && h("div", { className: "card" },
         h("h2", null, "Strength goals"),
         h("div", { className: "strength-goals-grid" },
-          h(StrengthGoalRing, { label: "Squat", current: bestSquat, target: goals.squat || 1, color: "var(--warning)" }),
-          h(StrengthGoalRing, { label: "Bench Press", current: bestBench, target: goals.bench || 1, color: "var(--gold)" }),
-          h(StrengthGoalRing, { label: "Deadlift", current: bestDeadlift, target: goals.deadlift || 1, color: "var(--danger)" })
+          goalKeys.map((k, i) => h(StrengthGoalRing, {
+            key: k, label: goalLabel(k), current: bestWeightForName(data.days, k), target: goals[k] || 1,
+            color: GOAL_RING_COLORS[i % GOAL_RING_COLORS.length], unit: (data.exerciseUnits || {})[goalLabel(k)] || "kg"
+          }))
         ),
         h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 10, textAlign: "center" } }, "Edit targets in Settings → Strength goals")
       ),
@@ -3336,6 +3651,55 @@
     );
   }
 
+  /* ---------- Strength goals editor (Settings) ---------- */
+  function StrengthGoalsCard({ data, setData }) {
+    const [newName, setNewName] = useState("");
+    const goals = data.profile.goals || {};
+    const goalKeys = Object.keys(goals);
+
+    const setGoal = (k, v) => setData({ ...data, profile: { ...data.profile, goals: { ...data.profile.goals, [k]: v } } });
+    const removeGoal = (k) => {
+      const g = { ...data.profile.goals };
+      delete g[k];
+      setData({ ...data, profile: { ...data.profile, goals: g } });
+    };
+    const addGoal = () => {
+      const nm = newName.trim();
+      if (!nm) return;
+      if (goalKeys.some(k => goalLabel(k).toLowerCase() === nm.toLowerCase())) { setNewName(""); return; }
+      setGoal(nm, 20);
+      setNewName("");
+    };
+    const options = useMemo(() => {
+      const existing = new Set(goalKeys.map(k => goalLabel(k).toLowerCase()));
+      return combinedExerciseLibrary(data).map(e => e.name).filter(n => !existing.has(n.toLowerCase()));
+    }, [data.customExercises, goalKeys.join("|")]);
+
+    return h("div", { className: "card" },
+      h("h2", null, "Strength goals"),
+      h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 10 } }, "Target lifts used for the goal rings on the Stats tab. Add any exercise you want to track toward a target."),
+      goalKeys.map(k => h("div", { key: k, className: "field-row", style: { marginBottom: 8, alignItems: "flex-end" } },
+        h("div", { style: { flex: 1 } },
+          h("label", null, goalLabel(k) + " (kg)"),
+          h("input", {
+            className: "input", type: "number", inputMode: "numeric",
+            value: goals[k] ?? "",
+            onChange: (e) => setGoal(k, e.target.value === "" ? 0 : Number(e.target.value))
+          })
+        ),
+        h("button", { className: "icon-btn-sm danger", onClick: () => removeGoal(k), "aria-label": "Remove goal", style: { marginBottom: 2 } }, Icon("trash", 16))
+      )),
+      h("div", { style: { display: "flex", gap: 8, marginTop: 6 } },
+        h("input", {
+          className: "input", list: "strength-goal-options", value: newName, placeholder: "Add an exercise (e.g. Overhead Press)",
+          onChange: (e) => setNewName(e.target.value), onKeyDown: (e) => { if (e.key === "Enter") addGoal(); }
+        }),
+        h("datalist", { id: "strength-goal-options" }, options.map(n => h("option", { key: n, value: n }))),
+        h("button", { className: "btn secondary", style: { width: "auto", padding: "0 16px" }, onClick: addGoal }, "Add")
+      )
+    );
+  }
+
   /* ---------- Profile tab ---------- */
   function ProfileTab({ data, setData, onOpenSheet, importData, exportData, importCSV, exportCSV, resetData, loadSample }) {
     const targets = computeTargets(data.profile);
@@ -3365,23 +3729,7 @@
       ),
 
       // Strength goals
-      h("div", { className: "card" },
-        h("h2", null, "Strength goals"),
-        h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 10 } }, "Target lifts used for the goal rings on the Stats tab."),
-        h("div", { className: "field-row3" },
-          ["squat","bench","deadlift"].map(k => h("div", { key: k },
-            h("label", null, k === "squat" ? "Squat (kg)" : k === "bench" ? "Bench (kg)" : "Deadlift (kg)"),
-            h("input", {
-              className: "input", type: "number", inputMode: "numeric",
-              value: (data.profile.goals || {})[k] ?? "",
-              onChange: (e) => {
-                const v = e.target.value === "" ? 0 : Number(e.target.value);
-                setData({ ...data, profile: { ...data.profile, goals: { ...data.profile.goals, [k]: v } } });
-              }
-            })
-          ))
-        )
-      ),
+      h(StrengthGoalsCard, { data, setData }),
 
       // Profile editor
       h("div", { className: "profile-card" },

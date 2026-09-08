@@ -291,6 +291,7 @@
   .superset-group .workout-card:last-child { margin-bottom: 0; }
   .superset-head { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 6px 8px; }
   .ss-chip { display: inline-block; font-size: 10.5px; font-weight: 800; color: var(--primary); background: var(--primary-soft); border-radius: 6px; padding: 1px 6px; margin-right: 6px; vertical-align: middle; }
+  .exercise-cues { font-size: 12px; color: var(--muted); background: var(--card2); border-radius: 8px; padding: 8px 10px; margin: 8px 0 4px; line-height: 1.4; }
   .notes-input { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); resize: vertical; min-height: 36px; }
   /* Consistency heatmap */
   .heatmap { display: grid; grid-template-columns: repeat(16, 1fr); grid-auto-rows: 1fr; gap: 3px; margin-top: 12px; }
@@ -603,6 +604,7 @@
       customExercises: [],
       exerciseUnits: {},
       exerciseTypes: {},        // manual type overrides: { [exerciseName]: "timed" | ... }
+      exerciseNotes: {},        // per-exercise cues / how-to notes: { [exerciseName]: "..." }
       measurements: [],         // body measurements: { id, date, waist, chest, arms, thighs, hips, notes }
       progressPhotos: [],       // photo metadata (blobs live in IndexedDB): { id, date, note }
       dietPlan: null,
@@ -627,6 +629,7 @@
       customExercises: d.customExercises || [],
       exerciseUnits: d.exerciseUnits || {},
       exerciseTypes: d.exerciseTypes || {},
+      exerciseNotes: d.exerciseNotes || {},
       measurements: d.measurements || [],
       progressPhotos: d.progressPhotos || [],
       dietPlan: d.dietPlan || null
@@ -1842,6 +1845,17 @@
   }
   function parseDuration(mm, ss) {
     return (Math.max(0, Math.floor(Number(mm) || 0)) * 60) + Math.max(0, Math.min(59, Math.floor(Number(ss) || 0)));
+  }
+  // "Look it up" — open real instructional sources in the browser (no fabricated content).
+  function exerciseLookupUrl(name) {
+    return "https://www.google.com/search?q=" + encodeURIComponent("how to do " + (name || "") + " exercise proper form");
+  }
+  function exerciseVideoUrl(name) {
+    return "https://www.youtube.com/results?search_query=" + encodeURIComponent("how to do " + (name || "") + " exercise form");
+  }
+  function isBuiltInExercise(name) {
+    const n = (name || "").toLowerCase().trim();
+    return EXERCISE_LIBRARY.some(e => e.name.toLowerCase() === n);
   }
 
   const EXERCISE_CATEGORIES = ["All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"];
@@ -3084,6 +3098,7 @@
       setData(next);
     };
     const [plateFor, setPlateFor] = useState(null); // { weight, unit }
+    const [detailsFor, setDetailsFor] = useState(null); // exercise name
 
     const strengthWorkouts = wOut.filter(w => w.type === "strength");
     const sessionTotals = strengthWorkouts.reduce((s, w) => {
@@ -3145,6 +3160,7 @@
           key: w.id, w, prs: data.prs || {}, allDays: data.days, customExercises: data.customExercises,
           exerciseTypes: data.exerciseTypes, onSetType: (t) => setExerciseType(w.name, t),
           onOpenPlateCalc: (weight, unit) => setPlateFor({ weight, unit }),
+          onOpenDetails: (nm) => setDetailsFor(nm), cues: (data.exerciseNotes || {})[w.name],
           unit: (data.exerciseUnits || {})[w.name] || "kg", onToggleUnit: () => toggleUnit(w.name),
           onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id),
           canGroupAbove: idx > 0 && wOut[idx - 1] && wOut[idx - 1].type === "strength" && !w.supersetId,
@@ -3173,7 +3189,8 @@
         return out;
       })(),
       h(TemplatePreviewSheet, { open: !!template, onClose: () => setTemplate(null), template, data, setData, activeDate }),
-      h(PlateCalcSheet, { open: !!plateFor, onClose: () => setPlateFor(null), target: plateFor })
+      h(PlateCalcSheet, { open: !!plateFor, onClose: () => setPlateFor(null), target: plateFor }),
+      h(ExerciseDetailsSheet, { open: !!detailsFor, onClose: () => setDetailsFor(null), name: detailsFor, data, setData })
     );
   }
 
@@ -3233,6 +3250,89 @@
     );
   }
 
+  // Custom-exercise details editor + "look it up" links. Works for any exercise;
+  // built-in library exercises show their fixed muscle group / default scheme as read-only.
+  function ExerciseDetailsSheet({ open, onClose, name, data, setData }) {
+    const builtIn = isBuiltInExercise(name);
+    const meta = findExerciseMeta(name, data.customExercises) || {};
+    const catList = EXERCISE_CATEGORIES.filter(c => c !== "All");
+    const [cat, setCat] = useState(meta.category || "Full Body");
+    const [type, setType] = useState(exerciseTypeOf(name, data));
+    const [sets, setSets] = useState(meta.sets || 3);
+    const [reps, setReps] = useState(meta.reps || 10);
+    const [cues, setCues] = useState((data.exerciseNotes || {})[name] || "");
+    useEffect(() => {
+      if (!open) return;
+      const m = findExerciseMeta(name, data.customExercises) || {};
+      setCat(m.category || "Full Body");
+      setType(exerciseTypeOf(name, data));
+      setSets(m.sets || 3);
+      setReps(m.reps || 10);
+      setCues((data.exerciseNotes || {})[name] || "");
+    }, [open, name]);
+
+    const save = () => {
+      const next = { ...data };
+      // Type override (uniform, wins over classifier) for any exercise.
+      next.exerciseTypes = { ...(next.exerciseTypes || {}), [name]: type };
+      // Cues for any exercise (empty clears it).
+      const notes = { ...(next.exerciseNotes || {}) };
+      if (cues.trim()) notes[name] = cues.trim(); else delete notes[name];
+      next.exerciseNotes = notes;
+      // Category / default scheme are editable only for custom exercises.
+      if (!builtIn) {
+        const list = (next.customExercises || []).slice();
+        const idx = list.findIndex(e => (e.name || "").toLowerCase() === (name || "").toLowerCase());
+        const entry = { name, category: cat, sets: Number(sets) || 3, reps: Number(reps) || 10, type };
+        if (idx >= 0) list[idx] = { ...list[idx], ...entry }; else list.push(entry);
+        next.customExercises = list;
+      }
+      setData(next);
+      onClose();
+    };
+
+    return h(Sheet, { open, onClose, title: name || "Exercise details" },
+      builtIn && h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginBottom: 12 } },
+        "Built-in exercise — muscle group and default scheme are fixed, but you can set its type and your own cues."),
+      h("div", { className: "field" },
+        h("label", null, "Muscle group"),
+        builtIn
+          ? h("div", { style: { padding: "9px 0", fontWeight: 600 } }, meta.category || "—")
+          : h("select", { className: "select", value: cat, onChange: (e) => setCat(e.target.value) },
+              catList.map(c => h("option", { key: c, value: c }, c)))
+      ),
+      h("div", { className: "field" },
+        h("label", null, "Type"),
+        h("select", { className: "select", value: type, onChange: (e) => setType(e.target.value) },
+          h("option", { value: "weighted_reps" }, "Weighted · reps"),
+          h("option", { value: "bodyweight_reps" }, "Bodyweight · reps"),
+          h("option", { value: "timed" }, "Timed · duration"),
+          h("option", { value: "weighted_timed" }, "Weight + time"))
+      ),
+      h("div", { className: "field-row" },
+        h("div", null, h("label", null, "Default sets"),
+          builtIn ? h("div", { style: { padding: "9px 0", fontWeight: 600 } }, meta.sets || "—")
+                  : h("input", { className: "input", type: "number", inputMode: "numeric", value: sets, onChange: (e) => setSets(e.target.value) })),
+        h("div", null, h("label", null, "Default reps"),
+          builtIn ? h("div", { style: { padding: "9px 0", fontWeight: 600 } }, meta.reps || "—")
+                  : h("input", { className: "input", type: "number", inputMode: "numeric", value: reps, onChange: (e) => setReps(e.target.value) }))
+      ),
+      h("div", { className: "field" },
+        h("label", null, "Form cues / how-to notes"),
+        h("textarea", { className: "input", style: { minHeight: 72, resize: "vertical" },
+          placeholder: "e.g. brace core, elbows tucked, full range of motion",
+          value: cues, onChange: (e) => setCues(e.target.value) })
+      ),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", margin: "2px 0 8px", textTransform: "uppercase", letterSpacing: "0.04em" } }, "Look it up"),
+      h("div", { className: "btn-row" },
+        h("a", { className: "btn secondary", href: exerciseLookupUrl(name), target: "_blank", rel: "noopener noreferrer", style: { flex: 1, textAlign: "center", textDecoration: "none" } }, "🔍 Web"),
+        h("a", { className: "btn secondary", href: exerciseVideoUrl(name), target: "_blank", rel: "noopener noreferrer", style: { flex: 1, textAlign: "center", textDecoration: "none" } }, "▶ Video")
+      ),
+      h("div", { style: { fontSize: 11, color: "var(--muted)", margin: "6px 0 14px", textAlign: "center" } }, "Opens a web search in your browser — needs a connection."),
+      h("button", { className: "btn", onClick: save }, "Save details")
+    );
+  }
+
   function PlateCalcSheet({ open, onClose, target }) {
     const initUnit = (target && target.unit) || "kg";
     const [unit, setUnit] = useState(initUnit);
@@ -3274,7 +3374,7 @@
     );
   }
 
-  function StrengthCard({ w, prs, allDays, customExercises, exerciseTypes, onSetType, onOpenPlateCalc, canGroupAbove, onGroupAbove, inSuperset, ssLabel, onUngroup, unit, onToggleUnit, onChange, onRemove }) {
+  function StrengthCard({ w, prs, allDays, customExercises, exerciseTypes, onSetType, onOpenPlateCalc, onOpenDetails, cues, canGroupAbove, onGroupAbove, inSuperset, ssLabel, onUngroup, unit, onToggleUnit, onChange, onRemove }) {
     const setsArr = w.sets || [];
     const meta = findExerciseMeta(w.name, customExercises);
     const category = meta ? meta.category : null;
@@ -3357,6 +3457,11 @@
         className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 9px", fontWeight: 700, flex: "0 0 auto", marginRight: 6, background: "var(--primary-soft)", color: "var(--primary)" },
         onClick: onUngroup, title: "Remove from superset"
       }, "⛓✕"),
+      // Details / how-to editor + look-it-up.
+      h("button", {
+        className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700, flex: "0 0 auto", marginRight: 6 },
+        onClick: () => onOpenDetails && onOpenDetails(w.name), title: "Details & how-to"
+      }, "ⓘ"),
       // Plate calculator for barbell-loaded exercises.
       usesWeight && h("button", {
         className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700, flex: "0 0 auto", marginRight: 6 },
@@ -3463,6 +3568,7 @@
 
     return h("div", { className: "workout-card" },
       header,
+      cues && h("div", { className: "exercise-cues" }, "💡 " + cues),
       table,
       h("div", { className: "btn-row" },
         (usesWeight && !isWeightedTimed) && h("button", { className: "add-set", style: { flex: 1 }, onClick: addWarmup }, "+ Warm-up"),
@@ -3528,6 +3634,8 @@
     const [met, setMet] = useState(7);
     const [machine, setMachine] = useState("other");
     const [machineParams, setMachineParams] = useState({});
+    const [newCat, setNewCat] = useState("Full Body");
+    const [newType, setNewType] = useState(""); // "" = auto-detect from name
     const toast = useToast();
 
     useEffect(() => {
@@ -3535,6 +3643,7 @@
         setName(""); setMinutes(30); setDistance(""); setMet(7);
         setBrowsing(false); setCat("All"); setSuggestion(null);
         setMachine("other"); setMachineParams({});
+        setNewCat("Full Body"); setNewType("");
       }
     }, [open]);
 
@@ -3584,7 +3693,7 @@
         w.calories = strengthCalories(w, next.profile.weightKg);
         const known = combinedExerciseLibrary(next).some(e => e.name.toLowerCase() === nm.toLowerCase());
         if (!known) {
-          next.customExercises = [...(next.customExercises || []), { name: nm, category: "Full Body", sets: 3, reps: 10, type: classifyExerciseType(nm) }];
+          next.customExercises = [...(next.customExercises || []), { name: nm, category: newCat || "Full Body", sets: 3, reps: 10, type: newType || classifyExerciseType(nm) }];
         }
       } else {
         w = {
@@ -3622,8 +3731,21 @@
             }),
             h("button", { className: "btn secondary", style: { width: "auto", padding: "0 14px" }, onClick: () => setBrowsing(!browsing) }, browsing ? "Close" : "Browse")
           ),
-          name.trim().length > 0 && !knownExercise && h("div", { style: { fontSize: 11, color: "var(--primary)", marginTop: 6 } },
-            "🆕 New exercise — it'll be saved to your list for next time")
+          name.trim().length > 0 && !knownExercise && h("div", { style: { marginTop: 10, padding: 10, background: "var(--primary-soft)", borderRadius: 10 } },
+            h("div", { style: { fontSize: 11.5, color: "var(--primary)", fontWeight: 600, marginBottom: 8 } }, "🆕 New exercise — set its details (saved for next time)"),
+            h("div", { className: "field-row" },
+              h("div", null, h("label", null, "Muscle group"),
+                h("select", { className: "select", value: newCat, onChange: (e) => setNewCat(e.target.value) },
+                  EXERCISE_CATEGORIES.filter(c => c !== "All").map(c => h("option", { key: c, value: c }, c)))),
+              h("div", null, h("label", null, "Type"),
+                h("select", { className: "select", value: newType || classifyExerciseType(name), onChange: (e) => setNewType(e.target.value) },
+                  h("option", { value: "weighted_reps" }, "Weighted · reps"),
+                  h("option", { value: "bodyweight_reps" }, "Bodyweight · reps"),
+                  h("option", { value: "timed" }, "Timed · duration"),
+                  h("option", { value: "weighted_timed" }, "Weight + time")))
+            ),
+            h("div", { style: { fontSize: 10.5, color: "var(--muted)", marginTop: 8 } }, "Add form cues and look up how-to later via the ⓘ button on the exercise card.")
+          )
         ),
         !browsing && recentExercises.length > 0 && h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
           recentExercises.map(rx => h("button", {
@@ -3645,7 +3767,10 @@
                 h("div", { className: "nm" }, e.name),
                 h("span", { className: "muscle-chip", style: { background: MUSCLE_SOFT[e.category] || "var(--card2)", color: MUSCLE_COLORS[e.category] || "var(--muted)" } }, e.category)
               ),
-              h("div", { style: { fontSize: 11.5, color: "var(--muted)" } }, e.sets + "×" + e.reps)
+              h("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+                h("span", { style: { fontSize: 11.5, color: "var(--muted)" } }, e.sets + "×" + e.reps),
+                h("a", { href: exerciseLookupUrl(e.name), target: "_blank", rel: "noopener noreferrer", onClick: (ev) => ev.stopPropagation(), title: "Look up how-to", style: { textDecoration: "none", fontSize: 15 } }, "🔍")
+              )
             ))
           )
         ),
@@ -3755,8 +3880,10 @@
           h("div", { style: { fontSize: 11.5, color: "var(--muted)" } },
             p.fromDate ? "Progressive from " + fmtDate(p.fromDate) : "Suggested starting scheme")
         ),
-        h("div", { style: { textAlign: "right", fontSize: 12.5, color: "var(--muted)" } },
-          p.sets.length + "× " + p.sets[0].reps + " @ " + p.sets[0].weight + "kg")
+        h("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+          h("span", { style: { fontSize: 12.5, color: "var(--muted)" } }, p.sets.length + "× " + p.sets[0].reps + " @ " + p.sets[0].weight + "kg"),
+          h("a", { href: exerciseLookupUrl(p.name), target: "_blank", rel: "noopener noreferrer", title: "Look up how-to", style: { textDecoration: "none", fontSize: 16 } }, "🔍")
+        )
       )),
       h("button", { className: "btn", onClick: start, style: { marginTop: 14 } }, "Start " + template.name)
     );

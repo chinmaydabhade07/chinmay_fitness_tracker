@@ -270,7 +270,41 @@
   .set-row input { padding: 8px 6px; text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--card); width: 100%; min-width: 0; }
   .set-row .pr-flag { color: var(--warning); font-size: 16px; text-align: center; }
   .add-set { width: 100%; padding: 10px; margin-top: 4px; background: var(--bg); border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  /* Bodyweight (rep-only) rows: drop the weight column */
+  .sets-table.bodyweight .hdr, .set-row.bodyweight { grid-template-columns: 32px 1fr 50px 28px; }
+  /* Timed rows: stopwatch layout (no grid) */
+  .set-row.timed { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .set-row.timed .n { flex: 0 0 24px; }
+  .set-row.timed .clock { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 18px; min-width: 62px; text-align: center; letter-spacing: 0.02em; }
+  .set-row.timed .clock.live { color: var(--primary); }
+  .set-row.timed .wt-input { flex: 0 0 62px; }
+  .set-row.timed .wt-input input { width: 100%; min-width: 0; padding: 8px 4px; text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+  .set-row.timed.wtimed .clock { min-width: 52px; font-size: 16px; }
+  .set-row.timed .dur-input { display: flex; align-items: center; gap: 3px; flex: 1 1 auto; }
+  .set-row.timed .dur-input input { width: 100%; min-width: 0; padding: 8px 4px; text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+  .set-row.timed .dur-input span { color: var(--muted); font-weight: 700; }
+  .stopwatch-btn { flex: 0 0 auto; border: none; border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 700; cursor: pointer; background: var(--primary-soft); color: var(--primary); }
+  .stopwatch-btn.running { background: var(--danger-soft); color: var(--danger); }
+  /* Supersets */
+  .superset-group { border: 1.5px solid var(--primary-soft); background: var(--primary-soft); border-radius: 16px; padding: 8px; margin-bottom: 12px; }
+  .superset-group .workout-card { margin-bottom: 8px; }
+  .superset-group .workout-card:last-child { margin-bottom: 0; }
+  .superset-head { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 6px 8px; }
+  .ss-chip { display: inline-block; font-size: 10.5px; font-weight: 800; color: var(--primary); background: var(--primary-soft); border-radius: 6px; padding: 1px 6px; margin-right: 6px; vertical-align: middle; }
   .notes-input { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); resize: vertical; min-height: 36px; }
+  /* Consistency heatmap */
+  .heatmap { display: grid; grid-template-columns: repeat(16, 1fr); grid-auto-rows: 1fr; gap: 3px; margin-top: 12px; }
+  .heat-cell { width: 100%; aspect-ratio: 1; border-radius: 3px; background: var(--border-soft); }
+  /* Progress photos */
+  .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .photo-cell { position: relative; aspect-ratio: 3/4; border-radius: 10px; overflow: hidden; background: var(--card2); }
+  .photo-cell img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block; }
+  .photo-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
+  .photo-date { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; color: #fff; background: rgba(0,0,0,0.45); padding: 2px 4px; text-align: center; }
+  .photo-del { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: none; border-radius: 999px; background: rgba(0,0,0,0.55); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
+  .photo-viewer { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+  .photo-viewer img { max-width: 100%; max-height: 88%; object-fit: contain; border-radius: 10px; }
+  .photo-viewer-date { color: #fff; margin-top: 10px; font-size: 13px; }
 
   /* Bottom nav */
   .bottom-nav {
@@ -568,6 +602,9 @@
       customFoods: [],
       customExercises: [],
       exerciseUnits: {},
+      exerciseTypes: {},        // manual type overrides: { [exerciseName]: "timed" | ... }
+      measurements: [],         // body measurements: { id, date, waist, chest, arms, thighs, hips, notes }
+      progressPhotos: [],       // photo metadata (blobs live in IndexedDB): { id, date, note }
       dietPlan: null,
       onboarded: false,
       hideInstallBanner: false
@@ -589,6 +626,9 @@
       customFoods: d.customFoods || [],
       customExercises: d.customExercises || [],
       exerciseUnits: d.exerciseUnits || {},
+      exerciseTypes: d.exerciseTypes || {},
+      measurements: d.measurements || [],
+      progressPhotos: d.progressPhotos || [],
       dietPlan: d.dietPlan || null
     };
   }
@@ -819,7 +859,7 @@
   /* ---------- CSV helpers (log export/import - JSON remains the full-fidelity backup) ---------- */
   const CSV_COLUMNS = [
     "record_type","date","name","slot","qty","serving","calories","protein","carbs","fat","fiber","sugar","sodium",
-    "set_index","weight","reps","rpe","warmup","session_idx","minutes","distance_km","machine","extra_json","notes","kg"
+    "set_index","exercise_type","weight","reps","duration_sec","rpe","warmup","session_idx","superset_id","minutes","distance_km","machine","extra_json","notes","kg"
   ];
   function csvEscape(v) {
     if (v === null || v === undefined) return "";
@@ -877,11 +917,25 @@
       });
       (day.workouts || []).forEach((w, wi) => {
         if (w.type === "strength") {
+          const exType = exerciseTypeOf(w.name, data);
+          const isTimed = exType === "timed";
+          const isWeightedTimed = exType === "weighted_timed";
+          const isBodyweight = exType === "bodyweight_reps";
+          const usesDuration = isTimed || isWeightedTimed;   // duration instead of / alongside reps
+          const usesReps = !isTimed && !isWeightedTimed;      // weighted & bodyweight use reps
+          const hasWeight = !isTimed;                         // everything except pure timed carries a load
           (w.sets || []).forEach((s, si) => {
             rows.push({
               record_type: "workout_strength_set", date: dateKey, name: w.name, set_index: si,
-              weight: s.weight ?? "", reps: s.reps ?? "", rpe: s.rpe ?? "", warmup: s.warmup ? 1 : 0,
-              session_idx: wi, notes: w.notes || "", calories: si === 0 ? (w.calories || 0) : ""
+              exercise_type: exType,
+              // Weight: blank for pure timed, 0 for bodyweight (per spec), actual value for weighted / weighted_timed.
+              weight: !hasWeight ? "" : (isBodyweight ? (s.weight ? s.weight : 0) : (s.weight ?? "")),
+              // Reps: only for rep-based exercises; blank when duration is the measure.
+              reps: usesReps ? (s.reps ?? "") : "",
+              // Duration (seconds): timed and weighted_timed.
+              duration_sec: usesDuration ? (s.durationSec ?? s.duration ?? "") : "",
+              rpe: s.rpe ?? "", warmup: s.warmup ? 1 : 0,
+              session_idx: wi, superset_id: w.supersetId || "", notes: w.notes || "", calories: si === 0 ? (w.calories || 0) : ""
             });
           });
         } else {
@@ -922,11 +976,13 @@
         counts.weight++;
       } else if (type === "workout_strength_set") {
         const key = [r.date, r.name, r.session_idx || 0].join("||");
-        if (!strengthGroups[key]) strengthGroups[key] = { date: r.date, name: r.name, notes: r.notes || "", sets: [] };
+        if (!strengthGroups[key]) strengthGroups[key] = { date: r.date, name: r.name, notes: r.notes || "", type: r.exercise_type || "", supersetId: r.superset_id || "", sets: [] };
+        const hasDuration = r.duration_sec !== "" && r.duration_sec !== undefined && r.duration_sec !== null;
         strengthGroups[key].sets.push({
           idx: Number(r.set_index) || 0,
           weight: r.weight === "" ? 0 : Number(r.weight),
           reps: r.reps === "" ? 0 : Number(r.reps),
+          durationSec: hasDuration ? Number(r.duration_sec) : undefined,
           rpe: r.rpe === "" ? "" : Number(r.rpe),
           warmup: r.warmup === "1" || r.warmup === 1 || r.warmup === true
         });
@@ -946,13 +1002,203 @@
     });
     Object.values(strengthGroups).forEach(g => {
       const d = ensureDay(next.days, g.date);
-      const sets = g.sets.sort((a,b) => a.idx - b.idx).map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe, warmup: s.warmup }));
+      const sets = g.sets.sort((a,b) => a.idx - b.idx).map(s => {
+        const o = { weight: s.weight, reps: s.reps, rpe: s.rpe, warmup: s.warmup };
+        if (s.durationSec !== undefined) o.durationSec = s.durationSec;
+        return o;
+      });
       const w = { id: uid(), type: "strength", name: g.name, sets, notes: g.notes, time: Date.now(), calories: 0 };
+      if (g.supersetId) w.supersetId = g.supersetId;
       w.calories = strengthCalories(w, next.profile.weightKg);
       d.workouts.push(w);
       counts.sets += sets.length;
     });
     return { next, counts };
+  }
+
+  /* ---------- Automated local CSV backup (spec #1–4) ----------
+     Browser reality check: a web app CANNOT silently append to an arbitrary file on
+     the device's normal storage (there is no fs.appendFile / "a+" mode in a browser,
+     and none at all on iOS Safari). So we layer three real, feature-detected sinks and
+     put them all through one create-if-missing / append-if-exists path:
+       1. OPFS  — an appendable fitness_logs.csv written automatically with no prompt
+                  (private to the app; not browsable in Files, but durable).
+       2. File System Access API — appends to a visible file the user picks ONCE
+                  (desktop Chrome/Edge & Android Chrome; not available on iOS).
+       3. Download — manual one-tap export of the master file (works everywhere).
+     Nothing here throws into the caller; each sink degrades to the next. */
+  const BACKUP = (function () {
+    const FILE_NAME = "fitness_logs.csv";
+    const HEADER = CSV_COLUMNS.join(",");
+    const IDB_NAME = "fittrack-backup", IDB_STORE = "handles";
+    const STATE_KEY = "fittrack-backup-state";
+
+    function loadState() { try { return JSON.parse(safeLS.get(STATE_KEY) || "{}"); } catch (e) { return {}; } }
+    function saveState(s) { safeLS.set(STATE_KEY, JSON.stringify(s || {})); }
+
+    // ---- persist the chosen file handle across sessions via IndexedDB ----
+    function idb() {
+      return new Promise((resolve, reject) => {
+        const r = indexedDB.open(IDB_NAME, 1);
+        r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+    }
+    async function idbGet(key) {
+      try {
+        const db = await idb();
+        return await new Promise((res, rej) => {
+          const t = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(key);
+          t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error);
+        });
+      } catch (e) { return null; }
+    }
+    async function idbSet(key, val) {
+      try {
+        const db = await idb();
+        return await new Promise((res, rej) => {
+          const t = db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(val, key);
+          t.onsuccess = () => res(true); t.onerror = () => rej(t.error);
+        });
+      } catch (e) { return false; }
+    }
+
+    // ---- Layer 1: OPFS (automatic, appendable) ----
+    async function opfsAppend(text) {
+      if (!(navigator.storage && navigator.storage.getDirectory)) return false;
+      try {
+        const root = await navigator.storage.getDirectory();
+        const handle = await root.getFileHandle(FILE_NAME, { create: true });
+        const size = (await handle.getFile()).size;               // check-if-exists (spec #3)
+        const writable = await handle.createWritable({ keepExistingData: true });
+        await writable.seek(size);                                // append mode: seek to end
+        await writable.write((size === 0 ? HEADER + "\r\n" : "") + text); // write header only when new
+        await writable.close();
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // ---- Layer 2: File System Access API (visible file) ----
+    async function verifyPermission(handle) {
+      try {
+        const opts = { mode: "readwrite" };
+        if ((await handle.queryPermission(opts)) === "granted") return true;
+        if ((await handle.requestPermission(opts)) === "granted") return true;
+      } catch (e) {}
+      return false;
+    }
+    async function fsaAppend(text) {
+      const handle = await idbGet("csvFile");
+      if (!handle || !(await verifyPermission(handle))) return false;
+      try {
+        const size = (await handle.getFile()).size;
+        const writable = await handle.createWritable({ keepExistingData: true });
+        await writable.seek(size);
+        await writable.write((size === 0 ? HEADER + "\r\n" : "") + text);
+        await writable.close();
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // One-time setup: user chooses/creates the visible master file.
+    async function chooseFile() {
+      if (!window.showSaveFilePicker) return { ok: false, reason: "unsupported" };
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: FILE_NAME,
+          types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }]
+        });
+        await idbSet("csvFile", handle);
+        if ((await handle.getFile()).size === 0) {
+          const w = await handle.createWritable();
+          await w.write(HEADER + "\r\n");
+          await w.close();
+        }
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, reason: (e && e.name === "AbortError") ? "cancelled" : "error" };
+      }
+    }
+    function hasLinkedFile() { return idbGet("csvFile").then(h => !!h); }
+
+    // ---- Core append: rows -> master file. Missing columns are written blank (spec #4). ----
+    async function appendRows(rows) {
+      if (!Array.isArray(rows) || rows.length === 0) return { written: 0, sinks: [] };
+      const body = rowsToCSV(rows).split("\r\n").slice(1).join("\r\n") + "\r\n"; // drop header line
+      const sinks = [];
+      if (await opfsAppend(body)) sinks.push("opfs");
+      if (await fsaAppend(body)) sinks.push("file");
+      return { written: rows.length, sinks, body };
+    }
+
+    // Read the OPFS master back (verification / manual download).
+    async function readMaster() {
+      try {
+        if (!(navigator.storage && navigator.storage.getDirectory)) return null;
+        const root = await navigator.storage.getDirectory();
+        const file = await (await root.getFileHandle(FILE_NAME)).getFile();
+        return await file.text();
+      } catch (e) { return null; }
+    }
+
+    return { FILE_NAME, HEADER, appendRows, chooseFile, hasLinkedFile, readMaster, loadState, saveState };
+  })();
+
+  // Stable string hash so an unchanged day is never appended twice.
+  function hashString(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return String(h >>> 0);
+  }
+
+  /* saveDailyLogsLocally(dailyDataArray) — spec #2.
+     Takes an array of CSV-shaped row objects, appends only the dates whose content has
+     changed since the last run, and records hashes so repeated calls are idempotent.
+     Safe to call on every session save; always resolves, never throws. */
+  async function saveDailyLogsLocally(dailyDataArray) {
+    try {
+      const rows = Array.isArray(dailyDataArray) ? dailyDataArray : [];
+      const state = BACKUP.loadState();
+      const seen = state.dateHashes || {};
+      const byDate = {};
+      rows.forEach(r => { const d = (r && r.date) || "undated"; (byDate[d] = byDate[d] || []).push(r); });
+      const toWrite = [];
+      const nextHashes = { ...seen };
+      Object.keys(byDate).sort().forEach(d => {
+        const hsh = hashString(rowsToCSV(byDate[d]));
+        if (seen[d] !== hsh) { toWrite.push.apply(toWrite, byDate[d]); nextHashes[d] = hsh; }
+      });
+      if (toWrite.length === 0) return { ok: true, written: 0, sinks: [] };
+      const res = await BACKUP.appendRows(toWrite);
+      BACKUP.saveState({ ...state, dateHashes: nextHashes, lastRun: new Date().toISOString(), lastSinks: res.sinks });
+      return { ok: true, ...res };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+
+  // ---- Weekly off-device backup reminder ----
+  // The OPFS copy is silent/on-device; this nudges the user to pull a copy OFF the device weekly.
+  function weekKey(d) {
+    d = d || new Date();
+    const onejan = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+    return d.getFullYear() + "-W" + week;
+  }
+  function markManualBackup() {
+    const st = BACKUP.loadState();
+    BACKUP.saveState({ ...st, lastManualBackup: new Date().toISOString() });
+  }
+  function dismissBackupReminder() {
+    const st = BACKUP.loadState();
+    BACKUP.saveState({ ...st, reminderDismissedWeek: weekKey() });
+  }
+  function backupReminderDue() {
+    const st = BACKUP.loadState();
+    if (st.reminderDismissedWeek === weekKey()) return false;
+    if (!st.lastManualBackup) return true;
+    return (Date.now() - new Date(st.lastManualBackup).getTime()) / 86400000 >= 7;
   }
 
   /* ---------- Macro / Targets ---------- */
@@ -1285,6 +1531,179 @@
     return Math.max(warmupSets.length ? warmupCals : 15, Math.round(totalSets*5 + totalReps*0.5 + totalVol*0.04 + warmupCals));
   }
   function setVolume(s) { return (Number(s.reps)||0) * (Number(s.weight)||0); }
+
+  /* ================= New-feature helpers ================= */
+
+  // ---- Estimated 1RM (Epley), capped so low-rep sets stay sane ----
+  function est1RM(weightKg, reps) {
+    const w = Number(weightKg) || 0, r = Number(reps) || 0;
+    if (w <= 0 || r <= 0) return 0;
+    if (r === 1) return w;
+    if (r > 15) return 0; // formula gets unreliable past ~15 reps
+    return w * (1 + r / 30);
+  }
+  // Best est-1RM across the working sets of a single exercise entry.
+  function bestEst1RM(w) {
+    let best = 0;
+    (w.sets || []).forEach(s => { if (!s.warmup) { const e = est1RM(s.weight, s.reps); if (e > best) best = e; } });
+    return best;
+  }
+
+  // ---- Weight-trend smoothing (EMA) + weekly rate of change ----
+  // Returns [{date, kg, ema}] sorted ascending. alpha≈2/(N+1), N≈7-day span.
+  function smoothWeightLog(log, alpha) {
+    const a = alpha || 0.25;
+    const sorted = (log || []).slice().sort((x, y) => x.date.localeCompare(y.date));
+    let ema = null;
+    return sorted.map(e => {
+      const kg = Number(e.kg) || 0;
+      ema = ema === null ? kg : (alphaBlend(ema, kg, a));
+      return { date: e.date, kg, ema: Math.round(ema * 100) / 100 };
+    });
+  }
+  function alphaBlend(prev, cur, a) { return prev + a * (cur - prev); }
+  // kg/week from the smoothed series over the trailing `days` window.
+  function weeklyRateKg(smoothed, days) {
+    if (!smoothed || smoothed.length < 2) return null;
+    const last = smoothed[smoothed.length - 1];
+    const cutoff = shift(last.date, -(days || 28));
+    let start = smoothed[0];
+    for (const p of smoothed) { if (p.date >= cutoff) { start = p; break; } }
+    const dayspan = Math.max(1, daysBetween(start.date, last.date));
+    return ((last.ema - start.ema) / dayspan) * 7;
+  }
+  function daysBetween(k1, k2) {
+    const [a,b,c] = k1.split("-").map(Number), [d,e,f] = k2.split("-").map(Number);
+    return Math.round((Date.UTC(d,e-1,f) - Date.UTC(a,b-1,c)) / 86400000);
+  }
+
+  // ---- Adaptive maintenance (TDEE) from actual intake vs weight change ----
+  // Uses avg logged intake over the window and the smoothed weight slope.
+  // 1 kg body mass ≈ 7700 kcal. maintenance ≈ avgIntake - (kgPerDay * 7700).
+  function adaptiveMaintenance(days, weightLog, windowDays) {
+    const win = windowDays || 28;
+    const today = todayKey();
+    let cal = 0, logged = 0;
+    for (let i = 0; i < win; i++) {
+      const t = dayTotals((days || {})[shift(today, -i)]);
+      if (t && t.calories > 0) { cal += t.calories; logged++; }
+    }
+    if (logged < 5) return null; // not enough intake data to be meaningful
+    const smoothed = smoothWeightLog(weightLog);
+    const rate = weeklyRateKg(smoothed, win); // kg/week
+    if (rate === null) return null;
+    const avgIntake = cal / logged;
+    const kcalPerDayDelta = (rate / 7) * 7700;
+    return {
+      avgIntake: Math.round(avgIntake),
+      rateKgPerWeek: Math.round(rate * 100) / 100,
+      maintenance: Math.round(avgIntake - kcalPerDayDelta),
+      loggedDays: logged
+    };
+  }
+
+  // ---- Consistency: streaks + per-day activity for a heatmap ----
+  function dayIsActive(day) {
+    if (!day) return false;
+    const trained = (day.workouts || []).length > 0;
+    const ate = (day.meals || []).length > 0;
+    return trained || ate;
+  }
+  function activityLevelForDay(day) {
+    if (!day) return 0;
+    const trained = (day.workouts || []).length > 0;
+    const ate = (day.meals || []).length > 0;
+    if (trained && ate) return 3;
+    if (trained) return 2;
+    if (ate) return 1;
+    return 0;
+  }
+  function computeStreaks(days) {
+    const today = todayKey();
+    let current = 0;
+    // current streak counts back from today (today optional — allow today not-yet-logged)
+    for (let i = 0; i < 400; i++) {
+      const k = shift(today, -i);
+      if (dayIsActive((days || {})[k])) current++;
+      else if (i === 0) continue; // today empty doesn't break the streak yet
+      else break;
+    }
+    // longest streak across all logged days
+    const keys = Object.keys(days || {}).filter(k => dayIsActive(days[k])).sort();
+    let longest = 0, run = 0, prev = null;
+    keys.forEach(k => {
+      if (prev && daysBetween(prev, k) === 1) run++; else run = 1;
+      if (run > longest) longest = run;
+      prev = k;
+    });
+    return { current, longest };
+  }
+
+  // ---- Plate calculator: which plates per side for a target barbell weight ----
+  const KG_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const LB_PLATES = [45, 35, 25, 10, 5, 2.5];
+  function computePlates(target, barWeight, unit) {
+    const plates = unit === "lbs" ? LB_PLATES : KG_PLATES;
+    const perSide = (Number(target) - Number(barWeight)) / 2;
+    const out = [];
+    let remaining = perSide;
+    if (remaining < 0) return { perSide: [], leftover: perSide, achievable: false };
+    for (const p of plates) {
+      let n = 0;
+      while (remaining >= p - 1e-9) { remaining -= p; n++; }
+      if (n > 0) out.push({ plate: p, count: n });
+    }
+    return { perSide: out, leftover: Math.round(remaining * 100) / 100, achievable: Math.abs(remaining) < 1e-6 };
+  }
+
+  // ---- Recent foods: distinct foods from recent days' meals, most-recent first ----
+  function recentFoodsFrom(days, limit) {
+    const seen = new Set(); const out = [];
+    const keys = Object.keys(days || {}).sort().reverse();
+    for (const k of keys) {
+      const meals = (days[k].meals || []).slice().reverse();
+      for (const m of meals) {
+        const id = (m.name || "").toLowerCase().trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        // Reconstruct a reusable "food" object from the meal's per-base nutrition.
+        const base = m.baseNutrition || {};
+        const bg = m.baseGrams || m.grams || 100;
+        out.push({
+          id: "recent-" + id, name: m.name, serving: bg + "g", g: bg,
+          calories: base.calories ?? m.calories ?? 0, protein: base.protein ?? m.protein ?? 0,
+          carbs: base.carbs ?? m.carbs ?? 0, fat: base.fat ?? m.fat ?? 0,
+          fiber: base.fiber ?? m.fiber ?? 0, sugar: base.sugar ?? m.sugar ?? 0, sodium: base.sodium ?? m.sodium ?? 0,
+          lastGrams: m.grams || bg
+        });
+        if (out.length >= (limit || 12)) return out;
+      }
+    }
+    return out;
+  }
+
+  // ---- Open Food Facts lookup (barcode → food); free, no key. Network required. ----
+  async function lookupOpenFoodFacts(barcode) {
+    const url = "https://world.openfoodfacts.org/api/v2/product/" + encodeURIComponent(barcode) +
+      "?fields=product_name,brands,nutriments,serving_size";
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("Lookup failed (" + r.status + ")");
+    const j = await r.json();
+    if (!j || j.status === 0 || !j.product) return null;
+    const p = j.product, n = p.nutriments || {};
+    const per100 = (k) => Number(n[k + "_100g"]) || 0;
+    return {
+      id: "off-" + barcode,
+      name: [p.product_name, p.brands].filter(Boolean).join(" · ") || ("Product " + barcode),
+      serving: "100g", g: 100,
+      calories: per100("energy-kcal") || Math.round((per100("energy") || 0) / 4.184),
+      protein: per100("proteins"), carbs: per100("carbohydrates"), fat: per100("fat"),
+      fiber: per100("fiber"), sugar: per100("sugars"), sodium: Math.round(per100("sodium") * 1000)
+    };
+  }
+
+  /* ============ end new-feature helpers ============ */
+
   function exerciseTotals(w) {
     const sets = w.sets || [];
     const working = sets.filter(s => !s.warmup);
@@ -1379,6 +1798,52 @@
     { name: "Sled Push", category: "Full Body", sets: 4, reps: 1 },
     { name: "Battle Ropes", category: "Full Body", sets: 3, reps: 1 }
   ];
+  /* ---------- Exercise type tags (spec #5): weighted_reps | bodyweight_reps | timed ---------- */
+  // Timed = duration instead of reps (planks, static holds). Bodyweight = reps with no external load.
+  const EX_TYPE_TIMED = new Set([
+    "plank","side plank","battle ropes","wall sit","dead hang","l-sit","hollow hold","superman hold"
+  ]);
+  // Weighted + timed: log BOTH a load and a duration (loaded carries, weighted holds).
+  const EX_TYPE_WEIGHTED_TIMED = new Set([
+    "farmer's carry","farmers carry","sled push","sled drag","suitcase carry","overhead carry",
+    "yoke walk","weighted plank","weighted dead hang"
+  ]);
+  const EX_TYPE_BODYWEIGHT = new Set([
+    "push-up","diamond push-up","box jump","pull-up","chin-up","dips","hanging leg raise",
+    "russian twist","sit-up","v-up","bicycle crunch","ab wheel rollout","burpees","mountain climbers"
+  ]);
+  function classifyExerciseType(name) {
+    const n = (name || "").toLowerCase().trim();
+    if (EX_TYPE_WEIGHTED_TIMED.has(n)) return "weighted_timed";
+    if (EX_TYPE_TIMED.has(n)) return "timed";
+    if (EX_TYPE_BODYWEIGHT.has(n)) return "bodyweight_reps";
+    // Heuristic fallback so custom / typed-in exercises still get a sensible tag.
+    if (/(carry|yoke|sled)/.test(n)) return "weighted_timed";
+    if (/\bweighted\b/.test(n) && /\b(plank|hold|hang|carry|sit)\b/.test(n)) return "weighted_timed";
+    if (/\b(plank|hold|hang|wall sit|l-sit|isometric)\b/.test(n)) return "timed";
+    if (/(push-?up|pull-?up|chin-?up|sit-?up|crunch|dip|burpee|mountain climber|air squat)/.test(n)
+        && !/(cable|machine|weighted|smith)/.test(n)) return "bodyweight_reps";
+    return "weighted_reps";
+  }
+  // Stamp a "type" tag onto every entry in the built-in database (spec #5: "assign every exercise a type tag").
+  EXERCISE_LIBRARY.forEach(e => { if (!e.type) e.type = classifyExerciseType(e.name); });
+  // Resolve the effective type for any exercise: manual override wins, then explicit meta tag, then classify by name.
+  function exerciseTypeOf(name, data) {
+    const override = data && data.exerciseTypes && data.exerciseTypes[name];
+    if (override) return override;
+    const meta = findExerciseMeta(name, data && data.customExercises);
+    if (meta && meta.type) return meta.type;
+    return classifyExerciseType(name);
+  }
+  // ----- Duration helpers for timed exercises -----
+  function fmtDuration(totalSec) {
+    const s = Math.max(0, Math.round(Number(totalSec) || 0));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function parseDuration(mm, ss) {
+    return (Math.max(0, Math.floor(Number(mm) || 0)) * 60) + Math.max(0, Math.min(59, Math.floor(Number(ss) || 0)));
+  }
+
   const EXERCISE_CATEGORIES = ["All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"];
   // Merge the built-in library with exercises the user has typed in manually and saved for reuse.
   function combinedExerciseLibrary(data) {
@@ -2136,11 +2601,14 @@
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState(null);
-    const [mode, setMode] = useState("search"); // search | manual
+    const [mode, setMode] = useState("search"); // search | manual | quick
     const [selected, setSelected] = useState(null); // food picked from search, awaiting weight confirm
     const [grams, setGrams] = useState(100);
+    const [quickText, setQuickText] = useState("");
+    const [quickBusy, setQuickBusy] = useState(false);
     const toast = useToast();
     const inputRef = useRef();
+    const recentFoods = useMemo(() => recentFoodsFrom(data.days, 10), [data.days, open]);
 
     useEffect(() => {
       if (open) {
@@ -2228,12 +2696,95 @@
     const slotName = (MEAL_SLOTS.find(s => s.id === slot) || {}).name || "meal";
     const preview = selected ? scaleFoodToWeight(selected, grams) : null;
 
+    // Build a full meal entry from a food object + logged grams (shared shape).
+    const mealFromFood = (food, weightGrams) => {
+      const scaled = scaleFoodToWeight(food, weightGrams);
+      return {
+        id: uid(), slot: slot || "snacks", time: Date.now(), qty: 1,
+        name: food.name, serving: weightGrams + "g", grams: weightGrams, baseGrams: foodBaseGrams(food),
+        baseNutrition: { calories: food.calories||0, protein: food.protein||0, carbs: food.carbs||0, fat: food.fat||0, fiber: food.fiber||0, sugar: food.sugar||0, sodium: food.sodium||0 },
+        ...scaled
+      };
+    };
+
+    // Copy every item from yesterday's same slot into today.
+    const copyYesterday = () => {
+      const y = shift(activeDate, -1);
+      const yMeals = (((data.days || {})[y] || {}).meals || []).filter(m => (m.slot || "snacks") === (slot || "snacks"));
+      if (!yMeals.length) { toast("Nothing in yesterday's " + slotName.toLowerCase()); return; }
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      yMeals.forEach(m => d.meals.push({ ...m, id: uid(), time: Date.now() }));
+      setData(next);
+      toast("Copied " + yMeals.length + " item" + (yMeals.length > 1 ? "s" : "") + " from yesterday");
+      onClose();
+    };
+
+    // Natural-language quick add: "2 eggs and toast" -> matched foods added to the slot.
+    // Nutritionix parses the whole phrase (best accuracy); other providers do a best-effort per-item search.
+    const runQuickAdd = async () => {
+      const text = quickText.trim();
+      if (!text) return;
+      const provId = data.providers.active;
+      const prov = PROVIDERS[provId];
+      const cfg = data.providers[provId];
+      const doSearch = (q) => prov.id === "mock" ? prov.search(q, null, data.customFoods) : prov.search(q, cfg);
+      setQuickBusy(true);
+      try {
+        let picks = [];
+        const unmatched = [];
+        if (prov.id === "nutritionix") {
+          const res = await doSearch(text); // NL endpoint returns itemized results
+          picks = (res || []).map(f => ({ food: f, grams: foodBaseGrams(f) }));
+        } else {
+          const parts = text.split(/,|\n|\+|\band\b/i).map(s => s.trim()).filter(Boolean);
+          for (const part of parts) {
+            const res = await doSearch(part);
+            if (res && res[0]) picks.push({ food: res[0], grams: foodBaseGrams(res[0]) });
+            else unmatched.push(part);
+          }
+        }
+        if (!picks.length) { toast("Couldn't match anything — try Search or Manual"); setQuickBusy(false); return; }
+        const next = { ...data };
+        const d = ensureDay(next.days, activeDate);
+        picks.forEach(({ food, grams }) => d.meals.push(mealFromFood(food, grams)));
+        setData(next);
+        toast("Added " + picks.length + " item" + (picks.length > 1 ? "s" : "") + (unmatched.length ? " · " + unmatched.length + " not found" : ""));
+        onClose();
+      } catch (e) {
+        toast((e && e.message) || "Quick add failed");
+      } finally {
+        setQuickBusy(false);
+      }
+    };
+
     return h(Sheet, { open, onClose, title: "Add to " + slotName },
       h("div", { className: "seg" },
         h("button", { className: mode === "search" ? "active" : "", onClick: () => { setMode("search"); setSelected(null); } }, "Search"),
-        h("button", { className: mode === "manual" ? "active" : "", onClick: () => setMode("manual") }, "Manual entry")
+        h("button", { className: mode === "scan" ? "active" : "", onClick: () => { setMode("scan"); setSelected(null); } }, "Scan"),
+        h("button", { className: mode === "quick" ? "active" : "", onClick: () => setMode("quick") }, "Quick add"),
+        h("button", { className: mode === "manual" ? "active" : "", onClick: () => setMode("manual") }, "Manual")
       ),
-      mode === "search" ? (
+      mode === "quick" ? h("div", null,
+        h("div", { className: "field" },
+          h("label", null, "Describe what you ate"),
+          h("textarea", {
+            className: "input", style: { minHeight: 84, resize: "vertical" },
+            placeholder: "e.g. 2 eggs, 2 slices toast and a banana",
+            value: quickText, onChange: (e) => setQuickText(e.target.value), autoCapitalize: "none"
+          })
+        ),
+        h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 10 } },
+          data.providers.active === "nutritionix"
+            ? "Nutritionix parses the whole phrase into itemized macros."
+            : "Best-effort: each item is looked up in " + PROVIDERS[data.providers.active].name + ". For full sentence parsing, use Nutritionix in Settings."),
+        h("button", { className: "btn", disabled: quickBusy || !quickText.trim(), onClick: runQuickAdd }, quickBusy ? "Matching…" : "Parse & add"),
+        recentFoods.length > 0 && h("div", { style: { marginTop: 16 } },
+          h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" } }, "Recent"),
+          h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+            recentFoods.map(f => h("button", { key: f.id, className: "pill", style: { border: "none", cursor: "pointer", padding: "7px 11px" }, onClick: () => { setMode("search"); selectFood(f); } }, f.name)))
+        )
+      ) : mode === "search" ? (
         selected ? h("div", null,
           h("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 2 } }, selected.name),
           h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 14 } },
@@ -2277,6 +2828,22 @@
           ),
           loading && h("div", { style: { padding: 20, textAlign: "center", color: "var(--muted)" } }, "Searching..."),
           err && h("div", { style: { padding: 12, background: "var(--danger-soft)", color: "var(--danger)", borderRadius: 10, fontSize: 13 } }, err),
+          // Empty query: quick re-log via Copy yesterday + Recent foods.
+          query.length === 0 && !loading && h("div", { style: { marginBottom: 6 } },
+            h("button", { className: "btn secondary", style: { marginBottom: 12 }, onClick: copyYesterday }, "⟳ Copy yesterday's " + slotName.toLowerCase()),
+            recentFoods.length > 0 && h(React.Fragment, null,
+              h("div", { style: { fontSize: 11, color: "var(--muted)", margin: "2px 0 8px", textTransform: "uppercase", letterSpacing: "0.04em" } }, "Recent foods"),
+              h("div", { className: "search-list" },
+                recentFoods.map(f => h("div", { key: f.id, className: "search-item", onClick: () => selectFood(f) },
+                  h("div", { style: { flex: 1, minWidth: 0 } },
+                    h("div", { className: "nm" }, f.name),
+                    h("div", { className: "sv" }, "per " + f.g + "g · P" + Math.round(f.protein||0) + " C" + Math.round(f.carbs||0) + " F" + Math.round(f.fat||0))
+                  ),
+                  h("div", { className: "cal" }, Math.round(f.calories||0) + " kcal")
+                ))
+              )
+            )
+          ),
           !loading && !err && query.length > 0 && results.length === 0 && h("div", { style: { padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 } },
             "No matches. Try \"manual entry\" to add it yourself."),
           h("div", { className: "search-list" },
@@ -2289,7 +2856,99 @@
             ))
           )
         )
+      ) : mode === "scan" ? (
+        open ? h(BarcodeScanner, { onFound: (food) => { setMode("search"); selectFood(food); } }) : null
       ) : h(ManualFoodEntry, { onAdd: pickManual })
+    );
+  }
+
+  // Live barcode scanning via the BarcodeDetector API (Chrome/Android). Falls back to manual
+  // barcode entry where unsupported (e.g. iOS Safari). Looks products up on Open Food Facts.
+  function BarcodeScanner({ onFound }) {
+    const supported = typeof window !== "undefined" && "BarcodeDetector" in window;
+    const [status, setStatus] = useState(supported ? "starting" : "unsupported"); // starting|scanning|denied|nocam|unsupported|notfound|error
+    const [manual, setManual] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState("");
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+    const timerRef = useRef(null);
+    const doneRef = useRef(false);
+
+    const stopCamera = () => {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    };
+
+    const lookup = async (code) => {
+      setBusy(true); setMsg("Looking up " + code + "…");
+      try {
+        const food = await lookupOpenFoodFacts(code);
+        if (food) { stopCamera(); onFound(food); }
+        else { setStatus("notfound"); setMsg("No product found for " + code + "."); setBusy(false); doneRef.current = false; }
+      } catch (e) {
+        setStatus("error"); setMsg("Lookup failed — check your connection."); setBusy(false); doneRef.current = false;
+      }
+    };
+
+    useEffect(() => {
+      if (!supported) return;
+      let cancelled = false;
+      (async () => {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setStatus("nocam"); return; }
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+          streamRef.current = stream;
+          const v = videoRef.current;
+          if (v) { v.srcObject = stream; v.setAttribute("playsinline", "true"); try { await v.play(); } catch (e) {} }
+          const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
+          setStatus("scanning"); setMsg("Point the camera at a barcode");
+          timerRef.current = setInterval(async () => {
+            if (doneRef.current || !videoRef.current) return;
+            try {
+              const codes = await detector.detect(videoRef.current);
+              if (codes && codes.length && codes[0].rawValue) {
+                doneRef.current = true;
+                if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+                lookup(codes[0].rawValue);
+              }
+            } catch (e) {}
+          }, 350);
+        } catch (e) {
+          setStatus((e && (e.name === "NotAllowedError" || e.name === "SecurityError")) ? "denied" : "nocam");
+        }
+      })();
+      return () => { cancelled = true; stopCamera(); };
+    }, []);
+
+    const submitManual = () => { const code = manual.trim(); if (code) { doneRef.current = true; lookup(code); } };
+
+    const noteFor = {
+      denied: "Camera permission was denied. Enter the barcode number below instead.",
+      nocam: "No camera available here. Enter the barcode number below instead.",
+      unsupported: "Live scanning isn't supported in this browser (e.g. iOS Safari). Enter the barcode number below — it still looks up Open Food Facts.",
+      notfound: msg, error: msg
+    };
+
+    return h("div", null,
+      supported && (status === "starting" || status === "scanning") && h("div", {
+        style: { position: "relative", borderRadius: 12, overflow: "hidden", background: "#000", aspectRatio: "3/4", marginBottom: 12 }
+      },
+        h("video", { ref: videoRef, muted: true, playsInline: true, style: { width: "100%", height: "100%", objectFit: "cover" } }),
+        h("div", { style: { position: "absolute", left: "10%", right: "10%", top: "38%", bottom: "38%", border: "2px solid rgba(255,255,255,0.85)", borderRadius: 10, boxShadow: "0 0 0 100vmax rgba(0,0,0,0.25)" } })
+      ),
+      busy && h("div", { style: { padding: 10, textAlign: "center", color: "var(--muted)" } }, msg),
+      !busy && supported && status === "scanning" && h("div", { style: { fontSize: 12.5, color: "var(--muted)", textAlign: "center", marginBottom: 10 } }, msg),
+      !busy && noteFor[status] && h("div", {
+        style: { fontSize: 12.5, color: status === "error" ? "var(--danger)" : "var(--muted)", marginBottom: 12, textAlign: "center" }
+      }, noteFor[status]),
+      h("div", { className: "field" },
+        h("label", null, "Barcode number"),
+        h("input", { className: "input", type: "number", inputMode: "numeric", placeholder: "e.g. 5000159407236", value: manual, onChange: (e) => setManual(e.target.value) })
+      ),
+      h("button", { className: "btn", disabled: busy || !manual.trim(), onClick: submitManual }, busy ? "Looking up…" : "Look up barcode"),
+      h("div", { style: { fontSize: 11, color: "var(--muted)", marginTop: 10, textAlign: "center" } }, "Product data from Open Food Facts · needs an internet connection.")
     );
   }
 
@@ -2393,6 +3052,38 @@
       const cur = (data.exerciseUnits || {})[name] || "kg";
       setData({ ...data, exerciseUnits: { ...(data.exerciseUnits || {}), [name]: cur === "lbs" ? "kg" : "lbs" } });
     };
+    const setExerciseType = (name, type) => {
+      setData({ ...data, exerciseTypes: { ...(data.exerciseTypes || {}), [name]: type } });
+    };
+    // Supersets are a non-destructive tag: exercises sharing a supersetId render grouped.
+    const groupWithAbove = (id) => {
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      const arr = d.workouts || [];
+      const idx = arr.findIndex(x => x.id === id);
+      if (idx <= 0) return;
+      const cur = arr[idx], prev = arr[idx - 1];
+      if (!cur || !prev || cur.type !== "strength" || prev.type !== "strength") return;
+      const gid = prev.supersetId || ("ss-" + uid());
+      d.workouts = arr.map((x, i) => {
+        if (i === idx) return { ...x, supersetId: gid };
+        if (i === idx - 1 && !prev.supersetId) return { ...x, supersetId: gid };
+        return x;
+      });
+      setData(next);
+    };
+    const ungroup = (id) => {
+      const next = { ...data };
+      const d = ensureDay(next.days, activeDate);
+      const strip = (x) => { const c = { ...x }; delete c.supersetId; return c; };
+      let arr = (d.workouts || []).map(x => x.id === id ? strip(x) : x);
+      const counts = {};
+      arr.forEach(x => { if (x.supersetId) counts[x.supersetId] = (counts[x.supersetId] || 0) + 1; });
+      arr = arr.map(x => (x.supersetId && counts[x.supersetId] < 2) ? strip(x) : x);
+      d.workouts = arr;
+      setData(next);
+    };
+    const [plateFor, setPlateFor] = useState(null); // { weight, unit }
 
     const strengthWorkouts = wOut.filter(w => w.type === "strength");
     const sessionTotals = strengthWorkouts.reduce((s, w) => {
@@ -2448,15 +3139,41 @@
         h("div", { className: "t" }, "No workouts logged"),
         h("div", { className: "s" }, "Tap the + button, or pick a quick-start template above")
       ) : null,
-      wOut.map(w => w.type === "strength"
-        ? h(StrengthCard, {
-            key: w.id, w, prs: data.prs || {}, allDays: data.days, customExercises: data.customExercises,
-            unit: (data.exerciseUnits || {})[w.name] || "kg", onToggleUnit: () => toggleUnit(w.name),
-            onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id)
-          })
-        : h(CardioCard, { key: w.id, w, onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id) })
-      ),
-      h(TemplatePreviewSheet, { open: !!template, onClose: () => setTemplate(null), template, data, setData, activeDate })
+      (() => {
+        const out = [];
+        const renderStrength = (w, idx, ssLabel) => h(StrengthCard, {
+          key: w.id, w, prs: data.prs || {}, allDays: data.days, customExercises: data.customExercises,
+          exerciseTypes: data.exerciseTypes, onSetType: (t) => setExerciseType(w.name, t),
+          onOpenPlateCalc: (weight, unit) => setPlateFor({ weight, unit }),
+          unit: (data.exerciseUnits || {})[w.name] || "kg", onToggleUnit: () => toggleUnit(w.name),
+          onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id),
+          canGroupAbove: idx > 0 && wOut[idx - 1] && wOut[idx - 1].type === "strength" && !w.supersetId,
+          onGroupAbove: () => groupWithAbove(w.id),
+          inSuperset: !!ssLabel, ssLabel, onUngroup: () => ungroup(w.id)
+        });
+        let i = 0;
+        while (i < wOut.length) {
+          const w = wOut[i];
+          if (w.type === "strength" && w.supersetId) {
+            const gid = w.supersetId; const group = [w]; let j = i + 1;
+            while (j < wOut.length && wOut[j].type === "strength" && wOut[j].supersetId === gid) { group.push(wOut[j]); j++; }
+            if (group.length > 1) {
+              out.push(h("div", { key: "grp-" + gid, className: "superset-group" },
+                h("div", { className: "superset-head" }, "⛓ Superset · " + group.length + " exercises · back-to-back"),
+                group.map((gw, gi) => renderStrength(gw, wOut.indexOf(gw), String(gi + 1)))
+              ));
+              i = j; continue;
+            }
+          }
+          out.push(w.type === "strength"
+            ? renderStrength(w, i, null)
+            : h(CardioCard, { key: w.id, w, onChange: (p) => updateWorkout(w.id, p), onRemove: () => removeWorkout(w.id) }));
+          i++;
+        }
+        return out;
+      })(),
+      h(TemplatePreviewSheet, { open: !!template, onClose: () => setTemplate(null), template, data, setData, activeDate }),
+      h(PlateCalcSheet, { open: !!plateFor, onClose: () => setPlateFor(null), target: plateFor })
     );
   }
 
@@ -2475,11 +3192,107 @@
     return weight * reps > max;
   }
 
-  function StrengthCard({ w, prs, allDays, customExercises, unit, onToggleUnit, onChange, onRemove }) {
+  // A single timed set: live stopwatch + manual MM:SS entry. On Stop, elapsed time is added to the set.
+  // When showWeight is true (weighted-timed exercises, e.g. loaded carries) it also renders a weight field.
+  function TimedSetRow({ index, set, onChange, onRemove, showWeight, unit, shownWeight, onWeightInput }) {
+    const [running, setRunning] = useState(false);
+    const [, setNowTs] = useState(0);
+    const startRef = useRef(0);
+    const timerRef = useRef(null);
+    useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+    const base = Math.max(0, Math.round(Number(set.durationSec) || 0));
+    const runningSec = running ? Math.max(0, Math.floor((Date.now() - startRef.current) / 1000)) : 0;
+    const start = () => {
+      startRef.current = Date.now();
+      setRunning(true);
+      timerRef.current = setInterval(() => setNowTs(Date.now()), 250);
+    };
+    const stop = () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+      const added = Math.max(0, Math.floor((Date.now() - startRef.current) / 1000));
+      setRunning(false);
+      onChange({ durationSec: base + added });
+    };
+    const mm = Math.floor(base / 60), ss = base % 60;
+    return h("div", { className: "set-row timed" + (showWeight ? " wtimed" : "") },
+      h("div", { className: "n" }, index + 1),
+      showWeight && h("div", { className: "wt-input" },
+        h("input", { type: "number", inputMode: "decimal", placeholder: unit || "kg", value: shownWeight, onChange: (e) => onWeightInput(e.target.value) })
+      ),
+      h("div", { className: "clock" + (running ? " live" : "") }, fmtDuration(base + runningSec)),
+      running
+        ? h("div", { className: "dur-input", style: { color: "var(--muted)", fontSize: 12 } }, "recording…")
+        : h("div", { className: "dur-input" },
+            h("input", { type: "number", inputMode: "numeric", min: 0, placeholder: "min", value: mm || "", onChange: (e) => onChange({ durationSec: parseDuration(e.target.value, ss) }) }),
+            h("span", null, ":"),
+            h("input", { type: "number", inputMode: "numeric", min: 0, max: 59, placeholder: "sec", value: ss || "", onChange: (e) => onChange({ durationSec: parseDuration(mm, e.target.value) }) })
+          ),
+      h("button", { className: "stopwatch-btn" + (running ? " running" : ""), onClick: running ? stop : start }, running ? "■ Stop" : "▶ Start"),
+      h("button", { className: "icon-btn-sm danger", onClick: onRemove }, Icon("close", 16))
+    );
+  }
+
+  function PlateCalcSheet({ open, onClose, target }) {
+    const initUnit = (target && target.unit) || "kg";
+    const [unit, setUnit] = useState(initUnit);
+    const [bar, setBar] = useState(initUnit === "lbs" ? 45 : 20);
+    const [wt, setWt] = useState(target && target.weight ? target.weight : (initUnit === "lbs" ? 135 : 60));
+    useEffect(() => {
+      if (open) {
+        const u = (target && target.unit) || "kg";
+        setUnit(u);
+        setBar(u === "lbs" ? 45 : 20);
+        setWt(target && target.weight ? target.weight : (u === "lbs" ? 135 : 60));
+      }
+    }, [open, target]);
+    const res = computePlates(Number(wt) || 0, Number(bar) || 0, unit);
+    return h(Sheet, { open, onClose, title: "Plate calculator" },
+      h("div", { className: "field-row" },
+        h("div", null, h("label", null, "Target weight (" + unit + ")"),
+          h("input", { className: "input", type: "number", inputMode: "decimal", value: wt, onChange: (e) => setWt(e.target.value === "" ? "" : Number(e.target.value)) })),
+        h("div", null, h("label", null, "Bar (" + unit + ")"),
+          h("input", { className: "input", type: "number", inputMode: "decimal", value: bar, onChange: (e) => setBar(e.target.value === "" ? "" : Number(e.target.value)) }))
+      ),
+      h("div", { className: "seg", style: { marginTop: 10 } },
+        h("button", { className: unit === "kg" ? "active" : "", onClick: () => { setUnit("kg"); setBar(20); } }, "kg"),
+        h("button", { className: unit === "lbs" ? "active" : "", onClick: () => { setUnit("lbs"); setBar(45); } }, "lbs")
+      ),
+      h("div", { style: { marginTop: 16, background: "var(--card2)", borderRadius: 12, padding: 14, textAlign: "center" } },
+        !res.achievable && res.perSide.length === 0
+          ? h("div", { style: { color: "var(--muted)", fontSize: 13 } }, (Number(wt) || 0) < (Number(bar) || 0) ? "Target is below the empty bar." : "Can't be made with standard plates.")
+          : h(React.Fragment, null,
+              h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" } }, "Load per side"),
+              h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" } },
+                res.perSide.map((p, i) => h("div", { key: i, style: { background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 800, borderRadius: 10, padding: "10px 12px", minWidth: 54 } },
+                  p.count + " × " + p.plate))),
+              res.leftover > 0 && h("div", { style: { marginTop: 10, fontSize: 12, color: "var(--warning)" } }, "≈ " + res.leftover + unit + " per side unmatched"),
+              h("div", { style: { marginTop: 12, fontSize: 12.5, color: "var(--muted)" } }, "Bar " + bar + unit + " + " + (2 * res.perSide.reduce((a, p) => a + p.plate * p.count, 0)).toFixed(1) + unit + " plates")
+            )
+      ),
+      h("div", { style: { marginTop: 12, fontSize: 11.5, color: "var(--muted)", textAlign: "center" } }, "Uses standard " + unit + " plates.")
+    );
+  }
+
+  function StrengthCard({ w, prs, allDays, customExercises, exerciseTypes, onSetType, onOpenPlateCalc, canGroupAbove, onGroupAbove, inSuperset, ssLabel, onUngroup, unit, onToggleUnit, onChange, onRemove }) {
     const setsArr = w.sets || [];
     const meta = findExerciseMeta(w.name, customExercises);
     const category = meta ? meta.category : null;
     const u = unit || "kg";
+    // Spec #6: decide which input mode this exercise uses (manual override respected).
+    const exType = exerciseTypeOf(w.name, { customExercises, exerciseTypes });
+    const isTimed = exType === "timed";
+    const isWeightedTimed = exType === "weighted_timed";
+    const isBodyweight = exType === "bodyweight_reps";
+    const usesStopwatch = isTimed || isWeightedTimed;
+    const usesWeight = !isTimed && !isBodyweight; // weighted_reps + weighted_timed carry a load
+    const typeLabel = isTimed ? "Timed" : (isWeightedTimed ? "Weight + Time" : (isBodyweight ? "Bodyweight" : "Weighted"));
+    const unitWord = isTimed ? "holds" : (isWeightedTimed ? "carries" : "sets");
+    const e1rm = usesWeight ? bestEst1RM(w) : 0;
+    const topSetKg = (() => {
+      let best = 0; setsArr.forEach(s => { if (!s.warmup && Number(s.weight) > best) best = Number(s.weight); }); return best;
+    })();
+
     const updateSet = (i, patch) => {
       const sets = setsArr.map((s, idx) => idx === i ? { ...s, ...patch } : s);
       onChange({ sets });
@@ -2490,8 +3303,11 @@
       updateSet(i, { weight: Math.round(kg * 100) / 100 });
     };
     const addSet = () => {
-      const last = setsArr[setsArr.length - 1] || { weight: 0, reps: 8 };
-      onChange({ sets: [...setsArr, { weight: last.weight, reps: last.reps, rpe: last.rpe || "" }] });
+      const last = setsArr[setsArr.length - 1] || {};
+      if (isTimed) onChange({ sets: [...setsArr, { durationSec: Number(last.durationSec) || 0, rpe: last.rpe || "" }] });
+      else if (isWeightedTimed) onChange({ sets: [...setsArr, { weight: last.weight || 0, durationSec: Number(last.durationSec) || 0, rpe: last.rpe || "" }] });
+      else if (isBodyweight) onChange({ sets: [...setsArr, { weight: 0, reps: last.reps || 10, rpe: last.rpe || "" }] });
+      else onChange({ sets: [...setsArr, { weight: last.weight || 0, reps: last.reps || 8, rpe: last.rpe || "" }] });
     };
     const addWarmup = () => {
       const firstWorking = setsArr.find(s => !s.warmup) || { weight: 20, reps: 10 };
@@ -2506,24 +3322,93 @@
     };
     const toggleWarmup = (i) => updateSet(i, { warmup: !setsArr[i].warmup });
     const totals = exerciseTotals(w);
+    const totalTime = setsArr.reduce((a, s) => a + (Number(s.durationSec) || 0), 0);
     let workingIdx = 0;
 
-    return h("div", { className: "workout-card" },
-      h("div", { className: "wh" },
-        h("div", { style: { flex: 1, minWidth: 0 } },
-          h("div", { className: "wn" }, w.name),
-          h("div", { className: "wt" },
-            h("span", { className: "badge strength" }, "Strength"),
-            category && h("span", { className: "muscle-chip", style: { marginLeft: 6, background: MUSCLE_SOFT[category], color: MUSCLE_COLORS[category] } }, category),
-            " · " + setsArr.length + " sets · " + w.calories + " kcal")
-        ),
-        h("button", {
-          className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700, flex: "0 0 auto" },
-          onClick: onToggleUnit, title: "Switch weight unit"
-        }, u === "lbs" ? "LB" : "KG"),
-        h("button", { className: "icon-btn-sm danger", style: { marginLeft: 6 }, onClick: () => { if (confirm("Remove workout?")) onRemove(); } }, Icon("trash", 18))
+    // ----- Header (shared) -----
+    const header = h("div", { className: "wh" },
+      h("div", { style: { flex: 1, minWidth: 0 } },
+        h("div", { className: "wn" },
+          inSuperset && h("span", { className: "ss-chip" }, "SS" + (ssLabel ? " " + ssLabel : "")),
+          w.name),
+        h("div", { className: "wt" },
+          h("span", { className: "badge strength" }, "Strength"),
+          category && h("span", { className: "muscle-chip", style: { marginLeft: 6, background: MUSCLE_SOFT[category], color: MUSCLE_COLORS[category] } }, category),
+          h("span", { className: "pill", style: { marginLeft: 6 } }, typeLabel),
+          " · " + setsArr.length + " " + unitWord + " · " + w.calories + " kcal",
+          e1rm > 0 && h("span", { style: { marginLeft: 6, color: "var(--gold)", fontWeight: 700 } }, "· e1RM " + displayWeight(e1rm, u) + u)),
+        // Manual type override — reclassify this exercise on the fly.
+        h("select", {
+          className: "select", "aria-label": "Exercise type",
+          style: { marginTop: 6, width: "auto", maxWidth: "100%", padding: "4px 24px 4px 8px", fontSize: 11.5 },
+          value: exType, onChange: (e) => onSetType && onSetType(e.target.value)
+        },
+          h("option", { value: "weighted_reps" }, "Weighted · reps"),
+          h("option", { value: "bodyweight_reps" }, "Bodyweight · reps"),
+          h("option", { value: "timed" }, "Timed · duration"),
+          h("option", { value: "weighted_timed" }, "Weight + time"))
       ),
-      h("div", { className: "sets-table" },
+      // Superset controls.
+      canGroupAbove && h("button", {
+        className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 9px", fontWeight: 700, flex: "0 0 auto", marginRight: 6 },
+        onClick: onGroupAbove, title: "Superset with the exercise above"
+      }, "⛓+"),
+      inSuperset && h("button", {
+        className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 9px", fontWeight: 700, flex: "0 0 auto", marginRight: 6, background: "var(--primary-soft)", color: "var(--primary)" },
+        onClick: onUngroup, title: "Remove from superset"
+      }, "⛓✕"),
+      // Plate calculator for barbell-loaded exercises.
+      usesWeight && h("button", {
+        className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700, flex: "0 0 auto", marginRight: 6 },
+        onClick: () => onOpenPlateCalc && onOpenPlateCalc(displayWeight(topSetKg || (u === "lbs" ? 60 : 60), u), u), title: "Plate calculator"
+      }, "🎯"),
+      // KG/LB toggle only matters for exercises that carry a load.
+      usesWeight && h("button", {
+        className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700, flex: "0 0 auto" },
+        onClick: onToggleUnit, title: "Switch weight unit"
+      }, u === "lbs" ? "LB" : "KG"),
+      h("button", { className: "icon-btn-sm danger", style: { marginLeft: 6 }, onClick: () => { if (confirm("Remove workout?")) onRemove(); } }, Icon("trash", 18))
+    );
+
+    // ----- Sets table (branches by type) -----
+    let table;
+    if (usesStopwatch) {
+      table = h("div", { className: "sets-table timed" },
+        h("div", { className: "hdr", style: { display: "flex", gap: 8 } },
+          h("div", { style: { flex: "0 0 24px" } }, "#"),
+          isWeightedTimed && h("div", { style: { flex: "0 0 62px", textAlign: "center" } }, "Wt (" + u + ")"),
+          h("div", { style: { flex: "0 0 " + (isWeightedTimed ? "52px" : "62px"), textAlign: "center" } }, "Time"),
+          h("div", { style: { flex: 1 } }, "Duration (mm:ss)"),
+          h("div", { style: { flex: "0 0 auto" } }, "")
+        ),
+        setsArr.map((s, i) => {
+          const shownWeight = s.weight === "" || s.weight === undefined || s.weight === null ? "" : displayWeight(s.weight, u);
+          return h(TimedSetRow, {
+            key: i, index: i, set: s,
+            showWeight: isWeightedTimed, unit: u, shownWeight,
+            onWeightInput: (raw) => updateWeight(i, raw),
+            onChange: (patch) => updateSet(i, patch),
+            onRemove: () => removeSet(i)
+          });
+        })
+      );
+    } else if (isBodyweight) {
+      table = h("div", { className: "sets-table bodyweight" },
+        h("div", { className: "hdr" },
+          h("div", null, "#"), h("div", null, "Reps"), h("div", null, "RPE"), h("div", null, "")
+        ),
+        setsArr.map((s, i) => {
+          if (!s.warmup) workingIdx++;
+          return h("div", { className: "set-row bodyweight", key: i },
+            h("div", { className: "n" }, workingIdx),
+            h("input", { type: "number", inputMode: "numeric", placeholder: "reps", value: s.reps ?? "", onChange: (e) => updateSet(i, { reps: e.target.value === "" ? "" : Number(e.target.value) }) }),
+            h("input", { type: "number", inputMode: "decimal", step: "0.5", placeholder: "@", value: s.rpe ?? "", onChange: (e) => updateSet(i, { rpe: e.target.value === "" ? "" : Number(e.target.value) }) }),
+            h("button", { className: "icon-btn-sm danger", onClick: () => removeSet(i) }, Icon("close", 16))
+          );
+        })
+      );
+    } else {
+      table = h("div", { className: "sets-table" },
         h("div", { className: "hdr" },
           h("div", null, "#"),
           h("div", null, "Weight (" + u + ")"),
@@ -2535,7 +3420,7 @@
           const pr = !s.warmup && isPR(w.name, Number(s.weight), Number(s.reps), allDays, w.id);
           if (!s.warmup) workingIdx++;
           const shownWeight = s.weight === "" || s.weight === undefined || s.weight === null ? "" : displayWeight(s.weight, u);
-          return h("div", { className: "set-row" + (s.warmup ? "" : ""), key: i, style: s.warmup ? { opacity: 0.7 } : null },
+          return h("div", { className: "set-row", key: i, style: s.warmup ? { opacity: 0.7 } : null },
             h("div", { className: "n", onClick: () => toggleWarmup(i), style: { cursor: "pointer" }, title: "Tap to toggle warm-up" },
               s.warmup ? "W" : workingIdx, pr ? " 🏆" : "", s.warmup && h("span", { className: "warmup-tag" }, "WARM")
             ),
@@ -2545,16 +3430,45 @@
             h("button", { className: "icon-btn-sm danger", onClick: () => removeSet(i) }, Icon("close", 16))
           );
         })
-      ),
+      );
+    }
+
+    // ----- Totals (branches by type) -----
+    let totalsRow = null;
+    if (setsArr.length > 0) {
+      if (isTimed) {
+        totalsRow = h("div", { className: "exercise-totals-row", style: { gridTemplateColumns: "repeat(2, 1fr)" } },
+          h("div", { className: "cell" }, h("div", { className: "v" }, fmtDuration(totalTime)), h("div", { className: "l" }, "Total time")),
+          h("div", { className: "cell" }, h("div", { className: "v" }, setsArr.length), h("div", { className: "l" }, "Holds"))
+        );
+      } else if (isWeightedTimed) {
+        totalsRow = h("div", { className: "exercise-totals-row" },
+          h("div", { className: "cell" }, h("div", { className: "v" }, fmtDuration(totalTime)), h("div", { className: "l" }, "Total time")),
+          h("div", { className: "cell" }, h("div", { className: "v" }, displayWeight(totals.avgWeight, u) + u), h("div", { className: "l" }, "Avg weight")),
+          h("div", { className: "cell" }, h("div", { className: "v" }, setsArr.length), h("div", { className: "l" }, "Carries"))
+        );
+      } else if (isBodyweight) {
+        totalsRow = h("div", { className: "exercise-totals-row", style: { gridTemplateColumns: "repeat(2, 1fr)" } },
+          h("div", { className: "cell" }, h("div", { className: "v" }, totals.totalReps), h("div", { className: "l" }, "Total reps")),
+          h("div", { className: "cell" }, h("div", { className: "v" }, setsArr.length), h("div", { className: "l" }, "Sets"))
+        );
+      } else {
+        totalsRow = h("div", { className: "exercise-totals-row" },
+          h("div", { className: "cell" }, h("div", { className: "v" }, (totals.totalWeight/1000).toFixed(2) + " t"), h("div", { className: "l" }, "Total weight")),
+          h("div", { className: "cell" }, h("div", { className: "v" }, totals.totalReps), h("div", { className: "l" }, "Total reps")),
+          h("div", { className: "cell" }, h("div", { className: "v" }, displayWeight(totals.avgWeight, u) + u), h("div", { className: "l" }, "Avg weight"))
+        );
+      }
+    }
+
+    return h("div", { className: "workout-card" },
+      header,
+      table,
       h("div", { className: "btn-row" },
-        h("button", { className: "add-set", style: { flex: 1 }, onClick: addWarmup }, "+ Warm-up"),
-        h("button", { className: "add-set", style: { flex: 1 }, onClick: addSet }, "+ Set")
+        (usesWeight && !isWeightedTimed) && h("button", { className: "add-set", style: { flex: 1 }, onClick: addWarmup }, "+ Warm-up"),
+        h("button", { className: "add-set", style: { flex: 1 }, onClick: addSet }, isTimed ? "+ Hold" : (isWeightedTimed ? "+ Carry" : "+ Set"))
       ),
-      setsArr.length > 0 && h("div", { className: "exercise-totals-row" },
-        h("div", { className: "cell" }, h("div", { className: "v" }, (totals.totalWeight/1000).toFixed(2) + " t"), h("div", { className: "l" }, "Total weight")),
-        h("div", { className: "cell" }, h("div", { className: "v" }, totals.totalReps), h("div", { className: "l" }, "Total reps")),
-        h("div", { className: "cell" }, h("div", { className: "v" }, displayWeight(totals.avgWeight, u) + u), h("div", { className: "l" }, "Avg weight"))
-      ),
+      totalsRow,
       h("textarea", {
         className: "notes-input",
         placeholder: "Notes (optional)",
@@ -2670,7 +3584,7 @@
         w.calories = strengthCalories(w, next.profile.weightKg);
         const known = combinedExerciseLibrary(next).some(e => e.name.toLowerCase() === nm.toLowerCase());
         if (!known) {
-          next.customExercises = [...(next.customExercises || []), { name: nm, category: "Full Body", sets: 3, reps: 10 }];
+          next.customExercises = [...(next.customExercises || []), { name: nm, category: "Full Body", sets: 3, reps: 10, type: classifyExerciseType(nm) }];
         }
       } else {
         w = {
@@ -2967,13 +3881,14 @@
   /* ---------- Exercise progress trend (Stats) ---------- */
   function ExerciseTrendSVG({ points, unit, color }) {
     const w = 320, ht = 150, pad = 16;
-    const vals = points.map(p => displayWeight(p.avgKg, unit));
+    const valOf = (p) => (p.v != null ? p.v : displayWeight(p.avgKg, unit));
+    const vals = points.map(valOf);
     const minV = Math.min(...vals), maxV = Math.max(...vals);
     const range = (maxV - minV) || 1;
     const pts = points.map((p, i) => {
       const x = points.length > 1 ? pad + (i / (points.length - 1)) * (w - pad*2) : w/2;
       const y = points.length > 1
-        ? ht - pad - ((displayWeight(p.avgKg, unit) - minV) / range) * (ht - pad*2)
+        ? ht - pad - ((valOf(p) - minV) / range) * (ht - pad*2)
         : ht/2;
       return [x, y];
     });
@@ -2988,6 +3903,7 @@
   }
   function ExerciseProgressChart({ data }) {
     const [selected, setSelected] = useState("");
+    const [metric, setMetric] = useState("weight"); // weight | e1rm | volume
     const exerciseNames = useMemo(() => {
       const set = new Set();
       Object.values(data.days || {}).forEach(d => (d.workouts || []).forEach(w => { if (w.type === "strength") set.add(w.name); }));
@@ -2999,24 +3915,37 @@
     }, [exerciseNames.join("|")]);
 
     const unit = (data.exerciseUnits || {})[selected] || "kg";
+    const isVolume = metric === "volume";
+    const metricUnit = isVolume ? (unit === "lbs" ? "k " + unit : "t") : unit; // volume shown in tonnes / thousand-lb
 
-    // One point per day the exercise was actually logged — days with no entry are simply skipped,
-    // so the line connects only real data points and gaps between sessions are never interpolated.
+    // One point per day the exercise was logged. For each metric we derive a display value `v`.
     const points = useMemo(() => {
       if (!selected) return [];
       const out = [];
       Object.keys(data.days || {}).sort().forEach(k => {
         const d = data.days[k];
-        let sum = 0, count = 0;
+        let sum = 0, count = 0, best1rm = 0, vol = 0;
         (d.workouts || []).forEach(w => {
           if (w.type === "strength" && w.name === selected) {
-            (w.sets || []).forEach(s => { if (!s.warmup && Number(s.weight) > 0) { sum += Number(s.weight); count++; } });
+            (w.sets || []).forEach(s => {
+              if (s.warmup) return;
+              const wt = Number(s.weight) || 0, rp = Number(s.reps) || 0;
+              if (wt > 0) { sum += wt; count++; }
+              const e = est1RM(wt, rp); if (e > best1rm) best1rm = e;
+              vol += wt * rp;
+            });
           }
         });
-        if (count > 0) out.push({ key: k, avgKg: sum / count });
+        if (count > 0 || vol > 0) {
+          let v;
+          if (metric === "e1rm") v = displayWeight(best1rm, unit);
+          else if (metric === "volume") v = Math.round(displayWeight(vol, unit) / 1000 * 100) / 100;
+          else v = count > 0 ? displayWeight(sum / count, unit) : 0;
+          out.push({ key: k, v });
+        }
       });
       return out;
-    }, [data.days, selected]);
+    }, [data.days, selected, metric]);
 
     if (exerciseNames.length === 0) {
       return h("div", { className: "card" },
@@ -3030,7 +3959,8 @@
     }
 
     const first = points[0], last = points[points.length - 1];
-    const deltaKg = points.length > 1 ? last.avgKg - first.avgKg : 0;
+    const delta = points.length > 1 ? (last.v - first.v) : 0;
+    const metricColor = metric === "e1rm" ? "var(--gold)" : (metric === "volume" ? "var(--violet)" : "var(--success)");
 
     return h("div", { className: "card chart-card" },
       h("div", { className: "ttl-row" },
@@ -3040,15 +3970,20 @@
           value: selected, onChange: (e) => setSelected(e.target.value)
         }, exerciseNames.map(n => h("option", { key: n, value: n }, n)))
       ),
+      h("div", { className: "seg", style: { marginTop: 8, marginBottom: 4 } },
+        h("button", { className: metric === "weight" ? "active" : "", onClick: () => setMetric("weight") }, "Avg weight"),
+        h("button", { className: metric === "e1rm" ? "active" : "", onClick: () => setMetric("e1rm") }, "Est. 1RM"),
+        h("button", { className: metric === "volume" ? "active" : "", onClick: () => setMetric("volume") }, "Volume")
+      ),
       points.length === 0
         ? h("div", { className: "empty-state" }, h("div", { className: "t" }, "No working sets logged for this exercise yet"))
         : h(React.Fragment, null,
-            h(ExerciseTrendSVG, { points, unit }),
+            h(ExerciseTrendSVG, { points, unit, color: metricColor }),
             h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "var(--muted)", marginTop: 8 } },
-              h("div", null, fmtDate(first.key) + " · " + displayWeight(first.avgKg, unit) + unit),
-              points.length > 1 && h("div", { style: { color: deltaKg >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 700, fontSize: 12.5 } },
-                (deltaKg >= 0 ? "+" : "") + displayWeight(deltaKg, unit) + unit + " over " + points.length + " sessions"),
-              h("div", null, fmtDate(last.key) + " · " + displayWeight(last.avgKg, unit) + unit)
+              h("div", null, fmtDate(first.key) + " · " + first.v + metricUnit),
+              points.length > 1 && h("div", { style: { color: delta >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 700, fontSize: 12.5 } },
+                (delta >= 0 ? "+" : "") + Math.round(delta * 100) / 100 + metricUnit + " over " + points.length + " sessions"),
+              h("div", null, fmtDate(last.key) + " · " + last.v + metricUnit)
             ),
             points.length < 2 && h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 8, textAlign: "center" } },
               "Log this exercise a few more times to see a trend.")
@@ -3080,7 +4015,178 @@
     );
   }
 
-  function StatsTab({ data }) {
+  /* ---------- Progress photo store (blobs in IndexedDB, kept out of the JSON) ---------- */
+  const photoStore = (function () {
+    const DB = "fittrack-photos", STORE = "img";
+    function db() {
+      return new Promise((res, rej) => {
+        const r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+      });
+    }
+    async function put(id, blob) { try { const d = await db(); return await new Promise((res, rej) => { const t = d.transaction(STORE, "readwrite").objectStore(STORE).put(blob, id); t.onsuccess = () => res(true); t.onerror = () => rej(t.error); }); } catch (e) { return false; } }
+    async function get(id) { try { const d = await db(); return await new Promise((res, rej) => { const t = d.transaction(STORE, "readonly").objectStore(STORE).get(id); t.onsuccess = () => res(t.result || null); t.onerror = () => rej(t.error); }); } catch (e) { return null; } }
+    async function del(id) { try { const d = await db(); return await new Promise((res, rej) => { const t = d.transaction(STORE, "readwrite").objectStore(STORE).delete(id); t.onsuccess = () => res(true); t.onerror = () => rej(t.error); }); } catch (e) { return false; } }
+    return { put, get, del };
+  })();
+
+  function ConsistencyCard({ data }) {
+    const { current, longest } = useMemo(() => computeStreaks(data.days), [data.days]);
+    // Last 16 weeks (112 days) heatmap, columns = weeks, rows = weekday.
+    const today = todayKey();
+    const weeks = 16, cells = weeks * 7;
+    const grid = [];
+    for (let i = cells - 1; i >= 0; i--) {
+      const k = shift(today, -i);
+      grid.push({ key: k, level: activityLevelForDay(data.days[k]) });
+    }
+    const levelColors = ["var(--border-soft)", "var(--blue-soft)", "var(--success-soft)", "var(--success)"];
+    return h("div", { className: "card" },
+      h("div", { className: "ttl-row" },
+        h("h2", { style: { margin: 0 } }, "Consistency"),
+        h("div", { className: "pill" + (current > 0 ? " pos" : "") }, "🔥 " + current + "-day streak")
+      ),
+      h("div", { className: "heatmap" },
+        grid.map((c, i) => h("div", {
+          key: i, className: "heat-cell", title: c.key,
+          style: { background: levelColors[c.level] }
+        }))
+      ),
+      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "var(--muted)", marginTop: 8 } },
+        h("div", null, "Longest streak: " + longest + " days"),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, "Less",
+          levelColors.map((c, i) => h("span", { key: i, className: "heat-cell", style: { background: c, width: 10, height: 10 } })), "More")
+      )
+    );
+  }
+
+  function AdaptiveEnergyCard({ data }) {
+    const adaptive = useMemo(() => adaptiveMaintenance(data.days, data.weightLog, 28), [data.days, data.weightLog]);
+    const est = useMemo(() => computeTargets(data.profile), [data.profile]);
+    const smoothed = useMemo(() => smoothWeightLog(data.weightLog), [data.weightLog]);
+    const rate = weeklyRateKg(smoothed, 28);
+    return h("div", { className: "card" },
+      h("h2", null, "Adaptive energy"),
+      !adaptive
+        ? h("div", { style: { fontSize: 12.5, color: "var(--muted)" } },
+            "Log meals on at least 5 days in the last 4 weeks (plus a couple of weigh-ins) and this will estimate your real maintenance calories from what actually happened.")
+        : h(React.Fragment, null,
+            h("div", { className: "macro-grid" },
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Est. maintenance"), h("div", { className: "v" }, adaptive.maintenance + " kcal"), h("div", { className: "t" }, "formula: " + est.tdee)),
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Avg intake"), h("div", { className: "v" }, adaptive.avgIntake + " kcal"), h("div", { className: "t" }, adaptive.loggedDays + " days")),
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Weight trend"), h("div", { className: "v", style: { color: (rate||0) >= 0 ? "var(--success)" : "var(--danger)" } }, (rate >= 0 ? "+" : "") + (Math.round((rate||0)*100)/100) + " kg/wk"))
+            ),
+            h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 10 } },
+              "Maintenance is inferred from your average intake and smoothed weight change (≈7700 kcal/kg). It adapts to you, unlike the static formula estimate.")
+          )
+    );
+  }
+
+  function MeasurementsCard({ data, setData }) {
+    const [open, setOpen] = useState(false);
+    const [form, setForm] = useState({ waist: "", chest: "", arms: "", thighs: "", hips: "", notes: "" });
+    const list = (data.measurements || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    const latest = list[0];
+    const fields = [["waist", "Waist"], ["chest", "Chest"], ["arms", "Arms"], ["thighs", "Thighs"], ["hips", "Hips"]];
+    const save = () => {
+      const entry = { id: "m-" + uid(), date: todayKey() };
+      fields.forEach(([k]) => { if (form[k] !== "" && form[k] != null) entry[k] = Number(form[k]); });
+      if (form.notes) entry.notes = form.notes;
+      const rest = (data.measurements || []).filter(m => m.date !== entry.date);
+      setData({ ...data, measurements: [...rest, entry] });
+      setForm({ waist: "", chest: "", arms: "", thighs: "", hips: "", notes: "" });
+      setOpen(false);
+    };
+    const removeEntry = (id) => setData({ ...data, measurements: (data.measurements || []).filter(m => m.id !== id) });
+    return h("div", { className: "card" },
+      h("div", { className: "ttl-row" },
+        h("h2", { style: { margin: 0 } }, "Body measurements"),
+        h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700 }, onClick: () => setOpen(o => !o) }, open ? "Close" : "+ Add")
+      ),
+      open && h("div", { style: { marginTop: 10 } },
+        h("div", { className: "field-row" },
+          fields.slice(0, 2).map(([k, lbl]) => h("div", { key: k }, h("label", null, lbl + " (cm)"),
+            h("input", { className: "input", type: "number", inputMode: "decimal", value: form[k], onChange: (e) => setForm(s => ({ ...s, [k]: e.target.value })) })))
+        ),
+        h("div", { className: "field-row", style: { marginTop: 8 } },
+          fields.slice(2, 4).map(([k, lbl]) => h("div", { key: k }, h("label", null, lbl + " (cm)"),
+            h("input", { className: "input", type: "number", inputMode: "decimal", value: form[k], onChange: (e) => setForm(s => ({ ...s, [k]: e.target.value })) })))
+        ),
+        h("div", { className: "field", style: { marginTop: 8 } }, h("label", null, "Hips (cm)"),
+          h("input", { className: "input", type: "number", inputMode: "decimal", value: form.hips, onChange: (e) => setForm(s => ({ ...s, hips: e.target.value })) })),
+        h("button", { className: "btn", style: { marginTop: 10 }, onClick: save }, "Save today's measurements")
+      ),
+      list.length === 0 && !open
+        ? h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginTop: 8 } }, "Track waist, chest, arms and more over time.")
+        : latest && h("div", { style: { marginTop: 12 } },
+            h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginBottom: 6 } }, "Latest · " + fmtDate(latest.date)),
+            h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+              fields.filter(([k]) => latest[k] != null).map(([k, lbl]) => h("div", { key: k, style: { background: "var(--card2)", borderRadius: 10, padding: "8px 10px", minWidth: 64 } },
+                h("div", { style: { fontSize: 15, fontWeight: 700 } }, latest[k] + "cm"),
+                h("div", { style: { fontSize: 10.5, color: "var(--muted)", textTransform: "uppercase" } }, lbl)))
+            ),
+            list.length > 1 && h("div", { style: { fontSize: 11, color: "var(--muted)", marginTop: 8 } }, list.length + " entries logged")
+          )
+    );
+  }
+
+  function ProgressPhotosCard({ data, setData }) {
+    const [urls, setUrls] = useState({}); // id -> objectURL
+    const [viewer, setViewer] = useState(null);
+    const fileRef = useRef();
+    const photos = (data.progressPhotos || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    useEffect(() => {
+      let live = true; const created = [];
+      (async () => {
+        const map = {};
+        for (const p of photos) {
+          const blob = await photoStore.get(p.id);
+          if (blob) { const u = URL.createObjectURL(blob); map[p.id] = u; created.push(u); }
+        }
+        if (live) setUrls(map); else created.forEach(u => URL.revokeObjectURL(u));
+      })();
+      return () => { live = false; Object.values(urls).forEach(u => URL.revokeObjectURL(u)); };
+    }, [photos.map(p => p.id).join("|")]);
+    const onPick = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const id = "p-" + uid();
+      const ok = await photoStore.put(id, file);
+      if (ok) setData({ ...data, progressPhotos: [...(data.progressPhotos || []), { id, date: todayKey() }] });
+      e.target.value = "";
+    };
+    const removePhoto = async (id) => {
+      if (!confirm("Delete this photo?")) return;
+      await photoStore.del(id);
+      setData({ ...data, progressPhotos: (data.progressPhotos || []).filter(p => p.id !== id) });
+    };
+    return h("div", { className: "card" },
+      h("div", { className: "ttl-row" },
+        h("h2", { style: { margin: 0 } }, "Progress photos"),
+        h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "6px 10px", fontWeight: 700 }, onClick: () => fileRef.current && fileRef.current.click() }, "+ Add")
+      ),
+      h("input", { ref: fileRef, type: "file", accept: "image/*", capture: "environment", style: { display: "none" }, onChange: onPick }),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 4 } }, "Stored only on this device — never uploaded."),
+      photos.length === 0
+        ? h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginTop: 10 } }, "Add a photo to start a visual timeline.")
+        : h("div", { className: "photo-grid" },
+            photos.map(p => h("div", { key: p.id, className: "photo-cell" },
+              urls[p.id]
+                ? h("img", { src: urls[p.id], alt: p.date, onClick: () => setViewer({ ...p, url: urls[p.id] }) })
+                : h("div", { className: "photo-loading" }, "…"),
+              h("div", { className: "photo-date" }, fmtDate(p.date)),
+              h("button", { className: "photo-del", onClick: () => removePhoto(p.id) }, "×")
+            ))
+          ),
+      viewer && h("div", { className: "photo-viewer", onClick: () => setViewer(null) },
+        h("img", { src: viewer.url, alt: viewer.date }),
+        h("div", { className: "photo-viewer-date" }, fmtDate(viewer.date))
+      )
+    );
+  }
+
+  function StatsTab({ data, setData }) {
     const [range, setRange] = useState(30);
     const today = todayKey();
     const targets = computeTargets(data.profile);
@@ -3177,6 +4283,10 @@
       // Per-exercise weight-lifted trend, with a dropdown to pick any exercise you've logged
       h(ExerciseProgressChart, { data }),
 
+      // Consistency + adaptive energy insights
+      h(ConsistencyCard, { data }),
+      h(AdaptiveEnergyCard, { data }),
+
       // Stat grid
       h("div", { className: "card" },
         h("div", { className: "stats-grid" },
@@ -3244,6 +4354,9 @@
         ),
         h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 10, textAlign: "center" } }, "Edit targets in Settings → Strength goals")
       ),
+
+      h(MeasurementsCard, { data, setData }),
+      h(ProgressPhotosCard, { data, setData }),
 
       h(LegacyHistorySection, { data })
     );
@@ -3705,6 +4818,40 @@
     const targets = computeTargets(data.profile);
     const toast = useToast();
 
+    // ----- Automatic backup status & controls -----
+    const [bk, setBk] = useState({
+      linked: false,
+      canLink: !!window.showSaveFilePicker,
+      hasOPFS: !!(navigator.storage && navigator.storage.getDirectory),
+      state: BACKUP.loadState()
+    });
+    const refreshBk = () => {
+      setBk(s => ({ ...s, state: BACKUP.loadState() }));
+      BACKUP.hasLinkedFile().then(linked => setBk(s => ({ ...s, linked })));
+    };
+    useEffect(() => { refreshBk(); }, []);
+    const linkFile = async () => {
+      const r = await BACKUP.chooseFile();
+      if (r.ok) { toast("Backup file linked"); refreshBk(); }
+      else if (r.reason === "unsupported") toast("Not supported on this browser");
+      else if (r.reason !== "cancelled") toast("Could not link file");
+    };
+    const backupNow = async () => {
+      const r = await saveDailyLogsLocally(dataToCSVRows(data));
+      refreshBk();
+      if (!r.ok) toast("Backup failed");
+      else if (r.written === 0) toast("Already up to date");
+      else toast("Backed up " + r.written + " rows" + (r.sinks && r.sinks.length ? " · " + r.sinks.join(", ") : ""));
+    };
+    const downloadMaster = async () => {
+      const text = await BACKUP.readMaster();
+      if (text && text.trim()) { downloadBlob(new Blob([text], { type: "text/csv" }), BACKUP.FILE_NAME); toast("Master CSV downloaded"); }
+      else { exportCSV(); }
+      markManualBackup();
+      refreshBk();
+    };
+    const lastRun = bk.state && bk.state.lastRun ? new Date(bk.state.lastRun) : null;
+
     return h("div", null,
       h("div", { className: "header" }, h("div", null, h("h1", null, "Profile"))),
 
@@ -3748,6 +4895,37 @@
       h("div", { className: "profile-card" },
         h("div", { style: { padding: "12px 14px", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 } }, "Nutrition Database"),
         profileRow("Active source", PROVIDERS[data.providers.active].name, () => onOpenSheet("providers"))
+      ),
+
+      // Automatic local backup
+      h("div", { className: "profile-card" },
+        h("div", { style: { padding: "12px 14px", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 600 } }, "Automatic Local Backup"),
+        h("div", { style: { padding: "0 14px 10px", fontSize: 11.5, color: "var(--muted)" } },
+          "A running " + BACKUP.FILE_NAME + " is appended automatically as you log. " +
+          (bk.hasOPFS ? "It's saved in the app's private on-device storage. " : "Your browser can't keep an automatic file, so use the export below. ") +
+          "Browsers can't write to a visible file without your OK, so tap “Download master CSV” anytime to pull the file out."),
+        h("div", { className: "profile-row" },
+          h("div", null,
+            h("div", { className: "l" }, "Auto-backup status"),
+            h("div", { style: { fontSize: 11, color: "var(--muted)" } },
+              (bk.hasOPFS ? "On (private storage)" : "Export-only on this browser") +
+              (bk.linked ? " · linked file connected" : "") +
+              (lastRun ? " · last " + lastRun.toLocaleString() : " · not run yet"))
+          ),
+          h("div", { className: "ic" }, Icon(bk.hasOPFS ? "checkCircle" : "info", 18))
+        ),
+        h("div", { className: "profile-row", onClick: backupNow },
+          h("div", null, h("div", { className: "l" }, "Back up now"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Append any new rows to the master file immediately")),
+          h("div", { className: "ic" }, Icon("refresh", 18))
+        ),
+        bk.canLink && h("div", { className: "profile-row", onClick: linkFile },
+          h("div", null, h("div", { className: "l" }, bk.linked ? "Re-link visible backup file" : "Link a visible backup file"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Pick a .csv in Files/Drive — new rows get appended there too (desktop/Android)")),
+          h("div", { className: "ic" }, Icon("upload", 18))
+        ),
+        h("div", { className: "profile-row", onClick: downloadMaster },
+          h("div", null, h("div", { className: "l" }, "Download master CSV"), h("div", { style: { fontSize: 11, color: "var(--muted)" } }, "Save/share the full " + BACKUP.FILE_NAME + " (works on iOS too)")),
+          h("div", { className: "ic" }, Icon("download", 18))
+        )
       ),
 
       // Data management
@@ -3989,18 +5167,51 @@
     );
   }
 
+  function BackupReminderBanner({ data, onDone }) {
+    const [busy, setBusy] = useState(false);
+    const backupOff = async () => {
+      setBusy(true);
+      try {
+        await saveDailyLogsLocally(dataToCSVRows(data));
+        const text = await BACKUP.readMaster();
+        if (text && text.trim()) downloadBlob(new Blob([text], { type: "text/csv" }), BACKUP.FILE_NAME);
+        else downloadBlob(new Blob([rowsToCSV(dataToCSVRows(data))], { type: "text/csv" }), BACKUP.FILE_NAME);
+        markManualBackup();
+      } catch (e) {}
+      setBusy(false);
+      onDone();
+    };
+    const later = () => { dismissBackupReminder(); onDone(); };
+    return h("div", { className: "install-banner", style: { background: "var(--gold-soft)", borderColor: "rgba(0,0,0,0.05)" } },
+      h("div", { style: { flex: 1, minWidth: 0 } },
+        h("div", { className: "t" }, "⏱ Weekly backup"),
+        h("div", { className: "s" }, "Save a copy of your logs off this device so nothing's lost.")
+      ),
+      h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "7px 11px", fontWeight: 700 }, disabled: busy, onClick: backupOff }, busy ? "…" : "Download"),
+      h("button", { className: "close-x", onClick: later, "aria-label": "Remind me next week" }, "×")
+    );
+  }
+
   /* ---------- App root ---------- */
   function App() {
     const [data, setDataRaw] = useState(loadData);
     const [tab, setTab] = useState("dashboard");
     const [activeDate, setActiveDate] = useState(todayKey());
     const [sheet, setSheet] = useState(null); // { type, slot? }
+    const [reminderTick, setReminderTick] = useState(0);
     const toast = useToast();
 
     const setData = useCallback((next) => {
       setDataRaw(next);
       safeLS.set(STORAGE_KEY, JSON.stringify(next));
     }, []);
+
+    // Automated local backup (spec #2–4): debounced after any change, and once on load
+    // as a daily catch-up. Idempotent — only dates whose content changed get appended.
+    useEffect(() => {
+      const t = setTimeout(() => { saveDailyLogsLocally(dataToCSVRows(data)); }, 4000);
+      return () => clearTimeout(t);
+    }, [data]);
 
     // Onboarding: prompt for profile on first load
     useEffect(() => {
@@ -4112,10 +5323,13 @@
         !data.hideInstallBanner && tab === "dashboard" && h(InstallBanner, {
           onDismiss: () => setData({ ...data, hideInstallBanner: true })
         }),
+        tab === "dashboard" && backupReminderDue() && h(BackupReminderBanner, {
+          data, onDone: () => setReminderTick(t => t + 1)
+        }),
         tab === "dashboard" && h(Dashboard, { data, setData, activeDate, setActiveDate, openWeightSheet: () => setSheet({ type: "weight" }), openNutritionGoal: () => setSheet({ type: "nutrition-goal" }) }),
         tab === "meals" && h(MealsTab, { data, setData, activeDate, setActiveDate, openAddMeal, openDietPlan: () => setSheet({ type: "diet-plan" }) }),
         tab === "workouts" && h(WorkoutsTab, { data, setData, activeDate, setActiveDate, openAddWorkout }),
-        tab === "stats" && h(StatsTab, { data }),
+        tab === "stats" && h(StatsTab, { data, setData }),
         tab === "review" && h(MonthlyReviewTab, { data }),
         tab === "profile" && h(ProfileTab, { data, setData, onOpenSheet: (t) => setSheet({ type: t }), importData, exportData, importCSV, exportCSV, resetData, loadSample })
       ),

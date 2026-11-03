@@ -439,6 +439,31 @@
   .trend-stats { display: flex; justify-content: space-around; padding: 6px 0; font-size: 12px; color: var(--muted); }
   .trend-stats b { color: var(--text); font-size: 14px; }
 
+  /* Daily check-in (Home) */
+  .row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .checkin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .checkin-tile { text-align: left; border: 1px dashed var(--border); background: var(--card2); border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer; color: var(--text); }
+  .checkin-tile.done { border-style: solid; border-color: transparent; }
+  .checkin-tile .l { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .checkin-tile .v { font-size: 20px; font-weight: 700; margin-top: 3px; letter-spacing: -0.01em; }
+  .checkin-tile .v.empty { color: var(--primary); font-size: 15px; font-weight: 600; padding: 3px 0 2px; }
+  .checkin-tile .s { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .checkin-tile:focus-visible, .range-select button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .mini-head { margin-top: 14px; }
+  .mini-head .lbl { font-size: 11.5px; color: var(--muted); }
+  .range-select.sm button { padding: 4px 10px; font-size: 11.5px; }
+  .mini-empty { font-size: 12.5px; color: var(--muted); padding: 18px 0; text-align: center; }
+
+  /* Stats: shared time window + line charts */
+  .stats-range { position: sticky; top: 0; z-index: 5; margin: -4px -14px 10px; padding: calc(8px + var(--safe-top)) 14px 10px; background: rgba(14,16,22,0.86); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .range-select.full button { flex: 1; padding: 8px 0; font-size: 12.5px; }
+  .chart-readout { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; }
+  .chart-readout .rv { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+  .chart-readout .rd { font-size: 11.5px; color: var(--muted); text-align: right; }
+  .line-chart { display: block; width: 100%; height: auto; margin-top: 4px; touch-action: pan-y; cursor: crosshair; }
+  .line-chart text { font-size: 9.5px; fill: var(--muted); }
+  .chart-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+
   /* Profile */
   .profile-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 12px; overflow: hidden; }
   .profile-row { display: flex; align-items: center; justify-content: space-between; padding: 14px; border-bottom: 1px solid var(--border-soft); cursor: pointer; gap: 8px; }
@@ -599,6 +624,7 @@
         edamam: { appId: "", appKey: "" }
       },
       weightLog: [],
+      sleepLog: [],             // nightly sleep: { date, hours } — date is the morning you woke up
       days: {},
       customFoods: [],
       customExercises: [],
@@ -625,6 +651,7 @@
       },
       days: d.days || {},
       weightLog: d.weightLog || [],
+      sleepLog: d.sleepLog || [],
       customFoods: d.customFoods || [],
       customExercises: d.customExercises || [],
       exerciseUnits: d.exerciseUnits || {},
@@ -953,13 +980,14 @@
       });
     });
     (data.weightLog || []).forEach(w => rows.push({ record_type: "weight", date: w.date, kg: w.kg }));
+    (data.sleepLog || []).forEach(sl => rows.push({ record_type: "sleep", date: sl.date, minutes: Math.round(sl.hours * 60) }));
     return rows;
   }
 
   function csvRowsIntoData(baseData, rows) {
     const next = JSON.parse(JSON.stringify(baseData));
     const strengthGroups = {}; // key: date||name||session_idx -> { date, name, sets: [], notes, calStored }
-    let counts = { meals: 0, sets: 0, cardio: 0, weight: 0 };
+    let counts = { meals: 0, sets: 0, cardio: 0, weight: 0, sleep: 0 };
     rows.forEach(r => {
       const type = r.record_type;
       if (type === "meal") {
@@ -977,6 +1005,10 @@
         log.push({ date: r.date, kg: Number(r.kg) });
         next.weightLog = log.sort((a,b) => a.date.localeCompare(b.date));
         counts.weight++;
+      } else if (type === "sleep") {
+        if (!r.date || r.minutes === "" || !isFinite(Number(r.minutes))) return;
+        next.sleepLog = upsertDated(next.sleepLog, { date: r.date, hours: Math.round(Number(r.minutes) / 60 * 100) / 100 });
+        counts.sleep++;
       } else if (type === "workout_strength_set") {
         const key = [r.date, r.name, r.session_idx || 0].join("||");
         if (!strengthGroups[key]) strengthGroups[key] = { date: r.date, name: r.name, notes: r.notes || "", type: r.exercise_type || "", supersetId: r.superset_id || "", sets: [] };
@@ -1964,6 +1996,7 @@
     history: '<path d="M3 12a9 9 0 109-9 9.7 9.7 0 00-7 3L3 8M3 3v5h5M12 7v5l3 2"/>',
     user: '<path d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M20 8v6M23 11h-6"/><circle cx="10" cy="7" r="4"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    moon: '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
     chevron: '<path d="M9 18l6-6-6-6"/>',
     chevronL: '<path d="M15 18l-6-6 6-6"/>',
@@ -2128,16 +2161,12 @@
     );
   }
 
-  function Dashboard({ data, setData, activeDate, setActiveDate, openWeightSheet, openNutritionGoal }) {
+  function Dashboard({ data, setData, activeDate, setActiveDate, openCheckIn, openNutritionGoal }) {
     const targets = useMemo(() => computeTargets(data.profile), [data.profile]);
     const customGoal = isCustomTargets(data.profile);
     const day = data.days[activeDate];
     const totals = useMemo(() => dayTotals(day), [day]);
     const burn = dayBurn(day);
-    const weightTrend = useMemo(() => {
-      const log = (data.weightLog || []).slice(-14);
-      return log;
-    }, [data.weightLog]);
 
     return h("div", null,
       h("div", { className: "header" },
@@ -2213,23 +2242,8 @@
         )
       ),
 
-      // Weight trend
-      h("div", { className: "card" },
-        h("h2", null, "Weight trend"),
-        weightTrend.length >= 2
-          ? h(WeightTrendChart, { log: weightTrend })
-          : h("div", { style: { fontSize: 13, color: "var(--muted)", padding: "8px 0" } },
-              "Log your weight regularly to see the trend."),
-        h("div", { className: "trend-stats" },
-          h("div", null, "Current: ", h("b", null, data.profile.weightKg + " kg")),
-          weightTrend.length >= 2 && h("div", null, "Δ 14d: ",
-            h("b", { style: { color: weightTrend[weightTrend.length-1].kg - weightTrend[0].kg >= 0 ? "var(--success)" : "var(--warning)" } },
-              (weightTrend[weightTrend.length-1].kg - weightTrend[0].kg >= 0 ? "+" : "")
-              + (weightTrend[weightTrend.length-1].kg - weightTrend[0].kg).toFixed(1) + " kg"))
-        ),
-        h("button", { className: "btn secondary", onClick: openWeightSheet, style: { marginTop: 8 } },
-          Icon("weight", 18), h("span", { style: { marginLeft: 6 } }, "Log weight"))
-      ),
+      // Daily check-in: weight + sleep for the selected day, with a 14-day mini trend
+      h(DailyCheckInCard, { data, activeDate, onOpen: openCheckIn }),
 
       // Today's workout summary
       day && day.workouts && day.workouts.length > 0 && h("div", { className: "card" },
@@ -2267,24 +2281,113 @@
     );
   }
 
-  function WeightTrendChart({ log }) {
+  /* ---------- Weight + sleep helpers ---------- */
+  function upsertDated(log, entry) {
+    const out = (log || []).filter(x => x.date !== entry.date);
+    out.push(entry);
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+  function entryOn(log, key) { return (log || []).find(x => x.date === key) || null; }
+  function fmtSleep(hours) {
+    if (hours == null || !isFinite(hours)) return "—";
+    const m = Math.round(hours * 60);
+    return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
+  }
+  function fmtShortDate(key) {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  function fmtKg(v) { return (Math.round(v * 10) / 10).toFixed(1) + " kg"; }
+  function fmtSignedKg(v) { const r = Math.round(v * 10) / 10; return (r > 0 ? "+" : r < 0 ? "−" : "±") + Math.abs(r).toFixed(1) + " kg"; }
+  function logInRange(log, startKey, endKey, valueOf) {
+    return (log || []).filter(x => x.date >= startKey && x.date <= endKey)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(x => ({ date: x.date, v: valueOf(x) }))
+      .filter(p => isFinite(p.v));
+  }
+  function mean(arr) { return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null; }
+
+  function MiniTrend({ points, startKey, endKey, color, fill }) {
     const w = 320, ht = 80, pad = 8;
-    const vals = log.map(l => l.kg);
-    const minV = Math.min(...vals) - 0.5;
-    const maxV = Math.max(...vals) + 0.5;
+    const vals = points.map(p => p.v);
+    const spread = Math.max(...vals) - Math.min(...vals);
+    const minV = Math.min(...vals) - Math.max(0.3, spread * 0.15);
+    const maxV = Math.max(...vals) + Math.max(0.3, spread * 0.15);
     const range = maxV - minV || 1;
-    const pts = log.map((l, i) => {
-      const x = pad + (i / Math.max(1, log.length - 1)) * (w - pad*2);
-      const y = ht - pad - ((l.kg - minV) / range) * (ht - pad*2);
+    const total = Math.max(1, daysBetween(startKey, endKey));
+    const pts = points.map(p => {
+      const x = pad + (daysBetween(startKey, p.date) / total) * (w - pad * 2);
+      const y = ht - pad - ((p.v - minV) / range) * (ht - pad * 2);
       return [x, y];
     });
     const d = pts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
     return h("div", { className: "trend" },
-      h("svg", { viewBox: "0 0 " + w + " " + ht, preserveAspectRatio: "none" },
-        h("path", { d: d + " L" + pts[pts.length-1][0] + "," + (ht-pad) + " L" + pad + "," + (ht-pad) + " Z", fill: "var(--primary-soft)" }),
-        h("path", { d, stroke: "var(--primary)", strokeWidth: 2, fill: "none", strokeLinecap: "round", strokeLinejoin: "round" }),
-        pts.map((p, i) => h("circle", { key: i, cx: p[0], cy: p[1], r: 2.5, fill: "var(--primary)" }))
+      h("svg", { viewBox: "0 0 " + w + " " + ht, preserveAspectRatio: "none", "aria-hidden": "true" },
+        h("path", { d: d + " L" + pts[pts.length-1][0] + "," + (ht-pad) + " L" + pts[0][0] + "," + (ht-pad) + " Z", fill }),
+        h("path", { d, stroke: color, strokeWidth: 2, fill: "none", strokeLinecap: "round", strokeLinejoin: "round", vectorEffect: "non-scaling-stroke" }),
+        pts.map((p, i) => h("circle", { key: i, cx: p[0], cy: p[1], r: 2.5, fill: color }))
       )
+    );
+  }
+
+  function DailyCheckInCard({ data, activeDate, onOpen }) {
+    const [mode, setMode] = useState("weight");
+    const isToday = activeDate === todayKey();
+    const weightLog = useMemo(() => (data.weightLog || []).slice().sort((a, b) => a.date.localeCompare(b.date)), [data.weightLog]);
+    const sleepLog = data.sleepLog || [];
+    const w = entryOn(weightLog, activeDate);
+    const sl = entryOn(sleepLog, activeDate);
+    const prevW = weightLog.filter(x => x.date < activeDate).slice(-1)[0];
+    const start14 = shift(activeDate, -13);
+    const wPts = logInRange(weightLog, start14, activeDate, x => Number(x.kg));
+    const sPts = logInRange(sleepLog, start14, activeDate, x => Number(x.hours));
+    const week = sPts.filter(p => p.date > shift(activeDate, -7));
+    const sleepAvg7 = week.length >= 2 ? mean(week.map(p => p.v)) : null;
+    const pts = mode === "weight" ? wPts : sPts;
+    const loggedCount = (w ? 1 : 0) + (sl ? 1 : 0);
+
+    const tile = (done, icon, label, value, sub) =>
+      h("button", { className: "checkin-tile" + (done ? " done" : ""), onClick: onOpen, "aria-label": (done ? "Edit " : "Log ") + label.toLowerCase() },
+        h("div", { className: "l" }, Icon(icon, 14), label),
+        h("div", { className: "v" + (done ? "" : " empty") }, value),
+        h("div", { className: "s" }, sub)
+      );
+
+    return h("div", { className: "card" },
+      h("div", { className: "row-between" },
+        h("h2", { style: { margin: 0 } }, "Daily check-in"),
+        h("span", { className: "pill" + (loggedCount === 2 ? " pos" : "") },
+          loggedCount === 2 ? "Done" : loggedCount === 1 ? "1 of 2 logged" : (isToday ? "Not logged yet" : "Not logged"))
+      ),
+      h("div", { className: "checkin-grid" },
+        tile(!!w, "weight", "Weight",
+          w ? fmtKg(Number(w.kg)) : "+ Add weight",
+          w ? (prevW ? fmtSignedKg(w.kg - prevW.kg) + " vs " + fmtShortDate(prevW.date) : "First weigh-in") : (isToday ? "Morning weigh-in" : fmtDate(activeDate))),
+        tile(!!sl, "moon", "Sleep",
+          sl ? fmtSleep(Number(sl.hours)) : "+ Add sleep",
+          sl ? (sleepAvg7 != null ? "7-day avg " + fmtSleep(sleepAvg7) : "Night before") : (isToday ? "Last night" : "Night before"))
+      ),
+      h("div", { className: "row-between mini-head" },
+        h("span", { className: "lbl" }, "Last 14 days"),
+        h("div", { className: "range-select sm", role: "tablist" },
+          [["weight", "Weight"], ["sleep", "Sleep"]].map(([id, lbl]) =>
+            h("button", { key: id, role: "tab", "aria-selected": mode === id, className: mode === id ? "active" : "", onClick: () => setMode(id) }, lbl))
+        )
+      ),
+      pts.length >= 2
+        ? h(MiniTrend, { points: pts, startKey: start14, endKey: activeDate,
+            color: mode === "weight" ? "var(--primary)" : "var(--violet)",
+            fill: mode === "weight" ? "var(--primary-soft)" : "var(--violet-soft)" })
+        : h("div", { className: "mini-empty" }, "Log " + (mode === "weight" ? "your weight" : "sleep") + " on two or more days to see the trend."),
+      pts.length >= 2 && h("div", { className: "trend-stats" },
+        mode === "weight"
+          ? [h("div", { key: "a" }, "Change: ", h("b", null, fmtSignedKg(pts[pts.length-1].v - pts[0].v))),
+             h("div", { key: "b" }, "Weigh-ins: ", h("b", null, pts.length + "/14"))]
+          : [h("div", { key: "a" }, "Average: ", h("b", null, fmtSleep(mean(pts.map(p => p.v))))),
+             h("div", { key: "b" }, "Nights: ", h("b", null, pts.length + "/14"))]
+      ),
+      h("button", { className: loggedCount === 2 ? "btn secondary" : "btn", onClick: onOpen, style: { marginTop: 8 } },
+        loggedCount === 2 ? "Edit check-in" : isToday ? "Log weight & sleep" : "Log weight & sleep for " + fmtDate(activeDate))
     );
   }
 
@@ -3917,6 +4020,72 @@
     );
   }
 
+  function CheckInSheet({ open, onClose, data, setData, date }) {
+    const key = date || todayKey();
+    const [kg, setKg] = useState("");
+    const [sh, setSh] = useState("");
+    const [sm, setSm] = useState("");
+    const toast = useToast();
+    useEffect(() => {
+      if (!open) return;
+      const w = entryOn(data.weightLog, key), sl = entryOn(data.sleepLog, key);
+      setKg(w ? String(w.kg) : "");
+      if (sl) { const m = Math.round(sl.hours * 60); setSh(String(Math.floor(m / 60))); setSm(String(m % 60)); }
+      else { setSh(""); setSm(""); }
+    }, [open, key]);
+    const save = () => {
+      const hadW = entryOn(data.weightLog, key), hadS = entryOn(data.sleepLog, key);
+      const hasW = String(kg).trim() !== "";
+      const hasS = String(sh).trim() !== "" || String(sm).trim() !== "";
+      if (!hasW && !hasS && !hadW && !hadS) { toast("Enter your weight or sleep to save"); return; }
+      const next = { ...data };
+      if (hasW) {
+        const v = Number(kg);
+        if (!(v >= 30 && v <= 300)) { toast("Enter a weight between 30 and 300 kg"); return; }
+        next.weightLog = upsertDated(data.weightLog, { date: key, kg: Math.round(v * 100) / 100 });
+      } else if (hadW) {
+        next.weightLog = (data.weightLog || []).filter(x => x.date !== key);
+      }
+      if (hasS) {
+        const hh = Number(sh || 0), mm = Number(sm || 0);
+        if (!isFinite(hh) || !isFinite(mm) || hh < 0 || mm < 0 || mm >= 60) { toast("Enter sleep as hours and minutes (0–59)"); return; }
+        const hours = hh + mm / 60;
+        if (hours <= 0 || hours > 24) { toast("Sleep must be between 0 and 24 hours"); return; }
+        next.sleepLog = upsertDated(data.sleepLog, { date: key, hours: Math.round(hours * 100) / 100 });
+      } else if (hadS) {
+        next.sleepLog = (data.sleepLog || []).filter(x => x.date !== key);
+      }
+      // Profile weight (used for calorie targets) follows your most recent weigh-in.
+      const latest = (next.weightLog || []).slice().sort((a, b) => a.date.localeCompare(b.date)).slice(-1)[0];
+      if (latest) next.profile = { ...next.profile, weightKg: latest.kg };
+      setData(next);
+      toast("Check-in saved");
+      onClose();
+    };
+    return h(Sheet, { open, onClose, title: key === todayKey() ? "Today's check-in" : "Check-in · " + fmtDate(key) },
+      h("div", { className: "field" },
+        h("label", { htmlFor: "ci-weight" }, "Weight (kg)"),
+        h("input", { id: "ci-weight", className: "input", type: "number", inputMode: "decimal", step: "0.1",
+          placeholder: data.profile.weightKg ? "Last: " + data.profile.weightKg : "e.g. 74.5",
+          value: kg, onChange: (e) => setKg(e.target.value) })
+      ),
+      h("div", { className: "field" },
+        h("label", null, key === todayKey() ? "Sleep last night" : "Sleep the night before"),
+        h("div", { className: "field-row" },
+          h("div", null,
+            h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 4 } }, "Hours"),
+            h("input", { className: "input", type: "number", inputMode: "numeric", min: 0, max: 24, placeholder: "7", "aria-label": "Sleep hours", value: sh, onChange: (e) => setSh(e.target.value) })),
+          h("div", null,
+            h("div", { style: { fontSize: 11, color: "var(--muted)", marginBottom: 4 } }, "Minutes"),
+            h("input", { className: "input", type: "number", inputMode: "numeric", min: 0, max: 59, step: 5, placeholder: "30", "aria-label": "Sleep minutes", value: sm, onChange: (e) => setSm(e.target.value) }))
+        )
+      ),
+      h("div", { style: { fontSize: 11.5, color: "var(--muted)", margin: "-2px 0 12px" } },
+        "Leave a field blank to skip it. Clearing a saved value removes it for this day."),
+      h("button", { className: "btn", onClick: save }, "Save check-in")
+    );
+  }
+
   /* ---------- Editable daily nutrition goal ---------- */
   function isCustomTargets(profile) { return !!(profile.customCalories || profile.customMacros); }
 
@@ -4313,8 +4482,290 @@
     );
   }
 
+  /* ---------- Stats time windows + charts ---------- */
+  const STATS_RANGES = [
+    { id: "7d", label: "7D", days: 7, text: "Last 7 days" },
+    { id: "14d", label: "14D", days: 14, text: "Last 14 days" },
+    { id: "1m", label: "1M", days: 30, text: "Last 30 days" },
+    { id: "3m", label: "3M", days: 90, text: "Last 90 days" },
+    { id: "all", label: "All", days: null, text: "All time" }
+  ];
+  // Earliest date anything was recorded (meals, workouts, weigh-ins, sleep, measurements).
+  function recordsStartKey(data) {
+    let min = null;
+    const consider = (k) => { if (k && /^\d{4}-\d{2}-\d{2}$/.test(k) && (!min || k < min)) min = k; };
+    Object.keys(data.days || {}).forEach(k => {
+      const d = data.days[k];
+      if (d && ((d.meals || []).length || (d.workouts || []).length)) consider(k);
+    });
+    (data.weightLog || []).forEach(x => consider(x.date));
+    (data.sleepLog || []).forEach(x => consider(x.date));
+    (data.measurements || []).forEach(x => consider(x.date));
+    return min;
+  }
+  function rangeDaysFor(id, data) {
+    const r = STATS_RANGES.find(x => x.id === id) || STATS_RANGES[0];
+    if (r.days) return r.days;
+    const start = recordsStartKey(data);
+    if (!start) return 7;
+    return Math.max(1, daysBetween(start, todayKey()) + 1);
+  }
+  function rollingAvg(points, windowDays) {
+    return points.map((p, i) => {
+      const cutoff = shift(p.date, -(windowDays - 1));
+      let sum = 0, n = 0;
+      for (let j = i; j >= 0 && points[j].date >= cutoff; j--) { sum += points[j].v; n++; }
+      return { date: p.date, v: sum / n };
+    });
+  }
+  function niceTicks(min, max, count) {
+    const span = (max - min) || 1;
+    const raw = span / Math.max(1, count);
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / mag;
+    const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1000) / 1000);
+    return { lo, hi: Math.max(hi, lo + step), ticks, step };
+  }
+  function xLabelKeys(startKey, endKey) {
+    const total = daysBetween(startKey, endKey);
+    if (total <= 0) return [startKey];
+    return [startKey, shift(startKey, Math.round(total / 2)), endKey];
+  }
+
+  // Date-scaled line chart. series[0] drives the tap/hover readout; later series draw on top.
+  function TrendLineChart({ startKey, endKey, series, band, yInclude, fmtTick, readout, ariaLabel }) {
+    const W = 320, H = 170, L = 32, R = 8, T = 10, B = 22;
+    const total = Math.max(1, daysBetween(startKey, endKey));
+    const vals = series.flatMap(sr => sr.points.map(p => p.v));
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (yInclude) { lo = Math.min(lo, yInclude[0]); hi = Math.max(hi, yInclude[1]); }
+    if (hi - lo < 1) { lo -= 0.5; hi += 0.5; }
+    const nt = niceTicks(lo, hi, 3);
+    const yMin = nt.lo, yMax = nt.hi;
+    const xOf = (k) => L + (daysBetween(startKey, k) / total) * (W - L - R);
+    const yOf = (v) => T + (1 - (v - yMin) / ((yMax - yMin) || 1)) * (H - T - B);
+    const primary = series[0];
+    const [pick, setPick] = useState(null);
+    useEffect(() => { setPick(null); }, [startKey, endKey, primary.points.length]);
+    const svgRef = useRef(null);
+    const pickAt = (e) => {
+      const svg = svgRef.current;
+      if (!svg || !primary.points.length) return;
+      const rect = svg.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * W;
+      let best = 0, bd = Infinity;
+      primary.points.forEach((p, i) => { const d = Math.abs(xOf(p.date) - x); if (d < bd) { bd = d; best = i; } });
+      setPick(best);
+    };
+    const pathFor = (pts) => pts.map((p, i) => (i ? "L" : "M") + xOf(p.date).toFixed(1) + "," + yOf(p.v).toFixed(1)).join(" ");
+    const sel = pick != null ? primary.points[pick] : primary.points[primary.points.length - 1];
+    const tickTxt = fmtTick || ((v) => (nt.step < 1 ? v.toFixed(1) : String(v)));
+    const xl = xLabelKeys(startKey, endKey);
+    return h("div", null,
+      sel && h("div", { className: "chart-readout", "aria-live": "polite" },
+        h("div", { className: "rv" }, readout(sel).value),
+        h("div", { className: "rd" }, readout(sel).sub)
+      ),
+      h("svg", {
+        ref: svgRef, className: "line-chart", viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": ariaLabel,
+        onPointerDown: pickAt,
+        onPointerMove: (e) => { if (e.pointerType === "mouse" || e.buttons) pickAt(e); },
+        onPointerLeave: (e) => { if (e.pointerType === "mouse") setPick(null); }
+      },
+        band && band.to > yMin && band.from < yMax && h("rect", {
+          x: L, width: W - L - R,
+          y: yOf(Math.min(band.to, yMax)), height: Math.max(0, yOf(Math.max(band.from, yMin)) - yOf(Math.min(band.to, yMax))),
+          fill: band.color
+        }),
+        nt.ticks.map(v => h("g", { key: "t" + v },
+          h("line", { x1: L, x2: W - R, y1: yOf(v), y2: yOf(v), stroke: "var(--border)", strokeWidth: 1, strokeDasharray: "3,3" }),
+          h("text", { x: L - 5, y: yOf(v) + 3, textAnchor: "end" }, tickTxt(v))
+        )),
+        series.map((sr, si) => h("g", { key: "s" + si, opacity: sr.opacity == null ? 1 : sr.opacity },
+          sr.points.length > 1 && h("path", { d: pathFor(sr.points), stroke: sr.color, strokeWidth: sr.width || 2, fill: "none", strokeLinecap: "round", strokeLinejoin: "round" }),
+          sr.dots && sr.points.length <= 60 && sr.points.map((p, i) => h("circle", { key: i, cx: xOf(p.date), cy: yOf(p.v), r: 2.4, fill: sr.color }))
+        )),
+        sel && h("g", null,
+          h("line", { x1: xOf(sel.date), x2: xOf(sel.date), y1: T, y2: H - B, stroke: "var(--muted-soft)", strokeWidth: 1 }),
+          h("circle", { cx: xOf(sel.date), cy: yOf(sel.v), r: 4.5, fill: "var(--card)", stroke: primary.color, strokeWidth: 2 })
+        ),
+        xl.map((k, i) => h("text", { key: "x" + i, x: xOf(k), y: H - 6, textAnchor: i === 0 ? "start" : i === xl.length - 1 ? "end" : "middle" }, fmtShortDate(k)))
+      )
+    );
+  }
+
+  // Calories per day; switches to weekly averages (of logged days) for windows longer than a month.
+  function CalorieBarChart({ rows, target }) {
+    const weekly = rows.length > 31;
+    const bars = [];
+    if (!weekly) {
+      rows.forEach(r => bars.push({ start: r.key, end: r.key, v: r.calories, n: r.calories > 0 ? 1 : 0, len: 1 }));
+    } else {
+      for (let end = rows.length - 1; end >= 0; end -= 7) {
+        const chunk = rows.slice(Math.max(0, end - 6), end + 1);
+        const logged = chunk.filter(r => r.calories > 0);
+        bars.unshift({ start: chunk[0].key, end: chunk[chunk.length - 1].key, v: logged.length ? logged.reduce((a, r) => a + r.calories, 0) / logged.length : 0, n: logged.length, len: chunk.length });
+      }
+    }
+    const W = 320, H = 170, L = 36, R = 6, T = 12, B = 22;
+    const nt = niceTicks(0, Math.max(target * 1.15, ...bars.map(b => b.v), 100), 3);
+    const yOf = (v) => T + (1 - v / nt.hi) * (H - T - B);
+    const slot = (W - L - R) / bars.length;
+    const bw = Math.max(1.5, slot * (bars.length > 20 ? 0.62 : 0.56));
+    const [pick, setPick] = useState(null);
+    useEffect(() => { setPick(null); }, [rows.length]);
+    const svgRef = useRef(null);
+    const pickAt = (e) => {
+      const svg = svgRef.current; if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * W;
+      setPick(Math.max(0, Math.min(bars.length - 1, Math.floor((x - L) / slot))));
+    };
+    let defIdx = bars.length - 1;
+    for (let i = bars.length - 1; i >= 0; i--) { if (bars[i].v > 0) { defIdx = i; break; } }
+    const sel = bars[pick != null ? pick : defIdx];
+    const every = Math.ceil(bars.length / 7);
+    const lbl = (b) => {
+      if (weekly) return fmtShortDate(b.start);
+      const [y, m, d] = b.start.split("-").map(Number);
+      return bars.length <= 7 ? ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(y, m - 1, d).getDay()] : String(d);
+    };
+    const kcal = (v) => Math.round(v).toLocaleString() + " kcal";
+    return h("div", null,
+      h("div", { className: "chart-readout", "aria-live": "polite" },
+        h("div", { className: "rv" }, sel.v > 0 ? (weekly ? "avg " : "") + kcal(sel.v) : "Not logged"),
+        h("div", { className: "rd" }, weekly
+          ? fmtShortDate(sel.start) + " – " + fmtShortDate(sel.end) + " · " + sel.n + "/" + sel.len + " days logged"
+          : fmtDate(sel.start))
+      ),
+      h("svg", {
+        ref: svgRef, className: "line-chart", viewBox: "0 0 " + W + " " + H, role: "img",
+        "aria-label": (weekly ? "Weekly average" : "Daily") + " calories versus a " + target + " kcal target",
+        onPointerDown: pickAt,
+        onPointerMove: (e) => { if (e.pointerType === "mouse" || e.buttons) pickAt(e); },
+        onPointerLeave: (e) => { if (e.pointerType === "mouse") setPick(null); }
+      },
+        nt.ticks.map(v => h("g", { key: "t" + v },
+          h("line", { x1: L, x2: W - R, y1: yOf(v), y2: yOf(v), stroke: "var(--border)", strokeWidth: 1, strokeDasharray: "3,3" }),
+          h("text", { x: L - 5, y: yOf(v) + 3, textAnchor: "end" }, v >= 1000 ? (v / 1000) + "k" : String(v))
+        )),
+        bars.map((b, i) => {
+          const x = L + i * slot + (slot - bw) / 2;
+          const on = sel === b;
+          return b.v > 0
+            ? h("rect", { key: i, x, y: yOf(b.v), width: bw, height: Math.max(1, yOf(0) - yOf(b.v)), rx: Math.min(3, bw / 2), fill: on ? "var(--primary-2)" : "var(--primary)", opacity: pick != null && !on ? 0.55 : 1 })
+            : h("rect", { key: i, x, y: yOf(0) - 2, width: bw, height: 2, fill: "var(--border)" });
+        }),
+        h("line", { x1: L, x2: W - R, y1: yOf(target), y2: yOf(target), stroke: "var(--success)", strokeWidth: 1.5, strokeDasharray: "5,4" }),
+        h("text", { x: W - R, y: yOf(target) - 4, textAnchor: "end", style: { fill: "var(--success)" } }, "target " + target),
+        bars.map((b, i) => (i % every === 0 || i === bars.length - 1) && (bars.length - 1 - i >= every / 2 || i === bars.length - 1)
+          ? h("text", { key: "x" + i, x: L + i * slot + slot / 2, y: H - 6, textAnchor: "middle" }, lbl(b))
+          : null)
+      )
+    );
+  }
+
+  function WeightStatsCard({ data, days }) {
+    const today = todayKey();
+    const start = shift(today, -(days - 1));
+    const smoothed = useMemo(() => smoothWeightLog(data.weightLog), [data.weightLog]);
+    const inRange = smoothed.filter(p => p.date >= start && p.date <= today);
+    const raw = inRange.map(p => ({ date: p.date, v: p.kg }));
+    const trend = inRange.map(p => ({ date: p.date, v: p.ema }));
+    const trendBy = {}; trend.forEach(p => { trendBy[p.date] = p.v; });
+    const showTrend = raw.length >= 5;
+    const first = raw[0], last = raw[raw.length - 1];
+    const span = raw.length >= 2 ? daysBetween(first.date, last.date) : 0;
+    const rate = span >= 3 ? ((trend[trend.length - 1].v - trend[0].v) / span) * 7 : null;
+    return h("div", { className: "card" },
+      h("div", { className: "row-between" },
+        h("h2", { style: { margin: 0 } }, "Weight"),
+        h("span", { className: "pill" + (raw.length ? " pos" : "") }, raw.length + (raw.length === 1 ? " weigh-in" : " weigh-ins"))
+      ),
+      raw.length >= 2
+        ? h(React.Fragment, null,
+            h(TrendLineChart, {
+              startKey: start, endKey: today, ariaLabel: "Weight over the selected period",
+              series: showTrend
+                ? [{ points: raw, color: "var(--primary)", width: 1.5, opacity: 0.55, dots: true },
+                   { points: trend, color: "var(--primary)", width: 2.5 }]
+                : [{ points: raw, color: "var(--primary)", width: 2.5, dots: true }],
+              readout: (p) => ({ value: fmtKg(p.v), sub: fmtDate(p.date) + (showTrend && trendBy[p.date] != null ? " · trend " + fmtKg(trendBy[p.date]) : "") })
+            }),
+            showTrend && h("div", { className: "chart-legend" },
+              h("div", { className: "item" }, h("span", { className: "dot", style: { background: "var(--primary)", opacity: 0.55 } }), "Weigh-ins"),
+              h("div", { className: "item" }, h("span", { className: "dot", style: { background: "var(--primary)" } }), "Smoothed trend")
+            ),
+            h("div", { className: "macro-grid" },
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Latest"), h("div", { className: "v" }, fmtKg(last.v)), h("div", { className: "t" }, fmtShortDate(last.date))),
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Change"), h("div", { className: "v" }, fmtSignedKg(last.v - first.v)), h("div", { className: "t" }, "since " + fmtShortDate(first.date))),
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Trend rate"), h("div", { className: "v" }, rate == null ? "—" : (rate > 0.005 ? "+" : rate < -0.005 ? "−" : "±") + Math.abs(rate).toFixed(2)), h("div", { className: "t" }, "kg per week"))
+            )
+          )
+        : h("div", { className: "chart-note", style: { padding: "10px 0 4px" } },
+            raw.length === 1
+              ? "One weigh-in in this window (" + fmtKg(last.v) + " on " + fmtShortDate(last.date) + "). Log a few more days to see the line."
+              : "No weigh-ins in this window. Use the daily check-in on Home to log your weight.")
+    );
+  }
+
+  function SleepStatsCard({ data, days }) {
+    const today = todayKey();
+    const start = shift(today, -(days - 1));
+    const pts = logInRange(data.sleepLog, start, today, x => Number(x.hours));
+    const n = pts.length;
+    const avg = mean(pts.map(p => p.v));
+    let shortest = null, longest = null;
+    pts.forEach(p => { if (!shortest || p.v < shortest.v) shortest = p; if (!longest || p.v > longest.v) longest = p; });
+    const enough = pts.filter(p => p.v >= 7).length;
+    const smoothOn = days > 14 && n >= 5;
+    const avg7 = smoothOn ? rollingAvg(pts, 7) : [];
+    const avgBy = {}; avg7.forEach(p => { avgBy[p.date] = p.v; });
+    return h("div", { className: "card" },
+      h("div", { className: "row-between" },
+        h("h2", { style: { margin: 0 } }, "Sleep"),
+        h("span", { className: "pill" + (n ? " pos" : "") }, n + "/" + days + " nights logged")
+      ),
+      n >= 2
+        ? h(React.Fragment, null,
+            h(TrendLineChart, {
+              startKey: start, endKey: today, ariaLabel: "Hours of sleep over the selected period",
+              yInclude: [6, 9], band: { from: 7, to: 9, color: "var(--violet-soft)" },
+              fmtTick: (v) => v + "h",
+              series: smoothOn
+                ? [{ points: pts, color: "var(--violet)", width: 1.5, opacity: 0.5, dots: true },
+                   { points: avg7, color: "var(--violet)", width: 2.5 }]
+                : [{ points: pts, color: "var(--violet)", width: 2.5, dots: true }],
+              readout: (p) => ({ value: fmtSleep(p.v), sub: fmtDate(p.date) + (smoothOn && avgBy[p.date] != null ? " · 7-day avg " + fmtSleep(avgBy[p.date]) : "") })
+            }),
+            h("div", { className: "chart-legend" },
+              smoothOn && h("div", { className: "item" }, h("span", { className: "dot", style: { background: "var(--violet)", opacity: 0.5 } }), "Nightly"),
+              smoothOn && h("div", { className: "item" }, h("span", { className: "dot", style: { background: "var(--violet)" } }), "7-day average"),
+              h("div", { className: "item" }, h("span", { className: "dot", style: { background: "var(--violet-soft)", borderRadius: 2 } }), "7–9h range")
+            ),
+            h("div", { className: "macro-grid" },
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Average"), h("div", { className: "v" }, fmtSleep(avg)), h("div", { className: "t" }, "per night")),
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Shortest"), h("div", { className: "v" }, fmtSleep(shortest.v)), h("div", { className: "t" }, fmtShortDate(shortest.date))),
+              h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Longest"), h("div", { className: "v" }, fmtSleep(longest.v)), h("div", { className: "t" }, fmtShortDate(longest.date)))
+            ),
+            h("div", { className: "chart-note" }, enough + " of " + n + " logged nights were 7 hours or more.")
+          )
+        : h("div", { className: "chart-note", style: { padding: "10px 0 4px" } },
+            n === 1
+              ? "One night logged in this window (" + fmtSleep(pts[0].v) + "). Log a few more to see the line."
+              : "No sleep logged in this window. Use the daily check-in on Home to log last night's sleep.")
+    );
+  }
+
   function StatsTab({ data, setData }) {
-    const [range, setRange] = useState(30);
+    const [rangeId, setRangeId] = useState("1m");
+    const range = rangeDaysFor(rangeId, data);
+    const rangeMeta = STATS_RANGES.find(r => r.id === rangeId);
+    const startKey = recordsStartKey(data);
+    const rangeText = rangeMeta.days ? rangeMeta.text : (startKey ? "Since " + fmtShortDate(startKey) + " · " + range + (range === 1 ? " day" : " days") : "No records yet");
     const today = todayKey();
     const targets = computeTargets(data.profile);
 
@@ -4367,6 +4818,11 @@
       };
     };
     const nutCur = useMemo(() => nutritionAgg(0, range), [data.days, range, targets.calories]);
+    const calorieRows = useMemo(() => {
+      const out = [];
+      for (let i = range - 1; i >= 0; i--) { const key = shift(today, -i); out.push({ key, calories: dayTotals(data.days[key]).calories }); }
+      return out;
+    }, [data.days, range]);
 
     const delta = (a,b) => {
       if (!b) return a > 0 ? { txt: "new", pos: true } : { txt: "—", pos: true };
@@ -4394,18 +4850,24 @@
     const goalKeys = Object.keys(goals);
 
     return h("div", null,
-      h("div", { className: "header" }, h("div", null, h("h1", null, "Stats"), h("div", { className: "sub" }, "Training & nutrition overview"))),
+      h("div", { className: "header" }, h("div", null, h("h1", null, "Stats"), h("div", { className: "sub" }, rangeText))),
 
-      // Range selector + chart
+      // One time window for everything on this page
+      h("div", { className: "stats-range" },
+        h("div", { className: "range-select full", role: "tablist", "aria-label": "Time window" },
+          STATS_RANGES.map(r => h("button", { key: r.id, role: "tab", "aria-selected": rangeId === r.id, title: r.text, className: rangeId === r.id ? "active" : "", onClick: () => setRangeId(r.id) }, r.label))
+        )
+      ),
+
+      // Training overview chart
       h("div", { className: "card chart-card" },
-        h("div", { className: "ttl-row" },
-          h("h2", { style: { margin: 0 } }, "Overview"),
-          h("div", { className: "range-select" },
-            [7,30,90,365].map(r => h("button", { key: r, className: range === r ? "active" : "", onClick: () => setRange(r) }, r === 365 ? "1y" : r + "d"))
-          )
-        ),
+        h("h2", { style: { margin: 0 } }, "Training overview"),
         h(DualLineChart, { series, colorA: "var(--success)", colorB: "var(--muted-soft)", labelA: "Workouts", labelB: "Volume" })
       ),
+
+      // Body & recovery
+      h(WeightStatsCard, { data, days: range }),
+      h(SleepStatsCard, { data, days: range }),
 
       // Per-exercise weight-lifted trend, with a dropdown to pick any exercise you've logged
       h(ExerciseProgressChart, { data }),
@@ -4457,6 +4919,7 @@
           h("div", { className: "pill" + (nutCur.logged > 0 ? " pos" : "") }, nutCur.logged + "/" + range + " days logged")
         ),
         nutCur.logged > 0 ? h("div", null,
+          h(CalorieBarChart, { rows: calorieRows, target: targets.calories }),
           h("div", { className: "macro-grid" },
             h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Avg calories"), h("div", { className: "v" }, nutCur.avgCal + " kcal"), h("div", { className: "t" }, "target " + targets.calories)),
             h("div", { className: "macro-cell" }, h("div", { className: "l" }, "Avg protein"), h("div", { className: "v" }, nutCur.avgProtein + "g"), h("div", { className: "t" }, "target " + targets.protein + "g")),
@@ -4490,18 +4953,6 @@
   }
 
   function LegacyHistorySection({ data }) {
-    const targets = computeTargets(data.profile);
-    const today = todayKey();
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const key = shift(today, -i);
-      const d = data.days[key];
-      const t = dayTotals(d);
-      const b = dayBurn(d);
-      days.push({ key, ...t, burn: b, net: t.calories - b });
-    }
-    const maxCal = Math.max(targets.calories * 1.1, ...days.map(d => d.calories), 100);
-
     // PRs
     const prs = useMemo(() => {
       const map = {};
@@ -4524,28 +4975,6 @@
     }, [data.days]);
 
     return h("div", null,
-      // Bars
-      h("div", { className: "card" },
-        h("h2", null, "Nutrition · last 7 days"),
-        h("div", { className: "history-bars" },
-          days.map(d => {
-            const consumedH = maxCal ? Math.max(2, (d.calories / maxCal) * 130) : 0;
-            const isToday = d.key === today;
-            const [y,m,dd] = d.key.split("-").map(Number);
-            const lbl = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(y, m-1, dd).getDay()];
-            return h("div", { key: d.key, className: "hb" + (isToday ? " active" : "") },
-              h("div", { className: "v" }, d.calories > 0 ? Math.round(d.calories) : ""),
-              h("div", { className: "bar-stack" },
-                h("div", { className: "bar", style: { height: consumedH + "px" } })
-              ),
-              h("div", { className: "lbl" }, lbl)
-            );
-          })
-        ),
-        h("div", { style: { fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 4 } },
-          "Daily target: " + targets.calories + " kcal")
-      ),
-
       // PRs
       h("div", { className: "card" },
         h("h2", null, "Personal Records"),
@@ -5277,6 +5706,10 @@
     for (let i = 13; i >= 0; i--) {
       data.weightLog.push({ date: shift(t, -i), kg: Math.round((data.profile.weightKg - 0.6 + (13-i)*0.05) * 10) / 10 });
     }
+    // Sleep log: nightly hours between ~6h20 and ~8h
+    for (let i = 13; i >= 0; i--) {
+      data.sleepLog.push({ date: shift(t, -i), hours: Math.round((6.35 + ((i * 37) % 17) / 10) * 4) / 4 });
+    }
     return data;
   }
 
@@ -5423,7 +5856,7 @@
             if (!confirm("Add " + rows.length + " rows from this CSV to your existing logs? (Profile & settings are unaffected — use JSON backup for a full restore.)")) return;
             const { next, counts } = csvRowsIntoData(data, rows);
             setData(next);
-            toast("Imported " + counts.meals + " meals, " + (counts.sets ? counts.sets + " sets" : "0 sets") + ", " + counts.cardio + " cardio, " + counts.weight + " weigh-ins");
+            toast("Imported " + counts.meals + " meals, " + (counts.sets ? counts.sets + " sets" : "0 sets") + ", " + counts.cardio + " cardio, " + counts.weight + " weigh-ins, " + (counts.sleep || 0) + " sleep logs");
           } catch(e) { toast("Could not read CSV file"); }
         };
         r.readAsText(file);
@@ -5453,7 +5886,7 @@
         tab === "dashboard" && backupReminderDue() && h(BackupReminderBanner, {
           data, onDone: () => setReminderTick(t => t + 1)
         }),
-        tab === "dashboard" && h(Dashboard, { data, setData, activeDate, setActiveDate, openWeightSheet: () => setSheet({ type: "weight" }), openNutritionGoal: () => setSheet({ type: "nutrition-goal" }) }),
+        tab === "dashboard" && h(Dashboard, { data, setData, activeDate, setActiveDate, openCheckIn: () => setSheet({ type: "checkin", date: activeDate }), openNutritionGoal: () => setSheet({ type: "nutrition-goal" }) }),
         tab === "meals" && h(MealsTab, { data, setData, activeDate, setActiveDate, openAddMeal, openDietPlan: () => setSheet({ type: "diet-plan" }) }),
         tab === "workouts" && h(WorkoutsTab, { data, setData, activeDate, setActiveDate, openAddWorkout }),
         tab === "stats" && h(StatsTab, { data, setData }),
@@ -5491,6 +5924,7 @@
       h(AddMealSheet, { open: sheet && sheet.type === "add-meal", onClose: closeSheet, data, setData, activeDate, slot: sheet && sheet.slot }),
       h(AddWorkoutSheet, { open: sheet && sheet.type === "add-workout", onClose: closeSheet, data, setData, activeDate }),
       h(WeightSheet, { open: sheet && sheet.type === "weight", onClose: closeSheet, data, setData }),
+      h(CheckInSheet, { open: sheet && sheet.type === "checkin", onClose: closeSheet, data, setData, date: sheet && sheet.date }),
       h(NutritionGoalSheet, { open: sheet && sheet.type === "nutrition-goal", onClose: closeSheet, data, setData }),
       h(DietPlanUploadSheet, { open: sheet && sheet.type === "diet-plan", onClose: closeSheet, data, setData }),
       h(ProfileSheet, { open: sheet && sheet.type === "profile", onClose: closeSheet, data, setData }),

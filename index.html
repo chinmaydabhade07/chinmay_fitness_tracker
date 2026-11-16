@@ -3947,6 +3947,48 @@
     }));
     return Array.from(hits.values()).sort((a, b) => b.n - a.n || a.best - b.best || a.first - b.first).map(x => x.f).slice(0, limit || 6);
   }
+  /* Plausibility checks on a saved food's values (per 100 g). Each issue: { key, text }. */
+  function foodIssues(food) {
+    if (!food) return [];
+    const f100 = 100 / foodBaseGrams(food);
+    const n = (k) => (food[k] === null || food[k] === undefined || food[k] === "") ? null : Number(food[k]) * f100;
+    const kcal = n("calories"), P = n("protein") || 0, C = n("carbs") || 0, F = n("fat") || 0;
+    const na = n("sodium"), fib = n("fiber"), sug = n("sugar");
+    const out = [];
+    const est = 4 * P + 4 * C + 9 * F;
+    if (kcal > 0 && est > 0 && Math.abs(est - kcal) > Math.max(25, 0.2 * kcal))
+      out.push({ key: "kcal", text: "Calories (" + Math.round(kcal) + ") don't match the macros, which add up to about " + Math.round(est) + " kcal. One of them is probably off." });
+    if (na !== null && na > 0 && na < 5) out.push({ key: "sodium-g", text: "Sodium is " + round1(na) + " mg per 100 g, which looks like grams typed into the mg field." });
+    if (na === 0 && kcal > 80) out.push({ key: "sodium-0", text: "Sodium is 0, which means no sodium at all. If it isn't known, leave it blank." });
+    if (na !== null && na > 3000) out.push({ key: "sodium-high", text: "Sodium is very high (" + Math.round(na) + " mg per 100 g). Check it against the label." });
+    if (fib === 0 && C >= 15) out.push({ key: "fiber-0", text: "Fiber is 0 with " + round1(C) + " g of carbs. If it isn't known, leave it blank." });
+    if (fib !== null && C > 0 && fib > C) out.push({ key: "fiber-carbs", text: "Fiber is more than total carbs." });
+    if (sug !== null && C >= 0 && sug > C + 0.5) out.push({ key: "sugar-carbs", text: "Sugar is more than total carbs." });
+    return out;
+  }
+  function round1(x) { return Math.round(Number(x) * 10) / 10; }
+  // Inline hints while typing values (per the form's own basis). Returns [{ text, action, label }].
+  function entryHints(vals, setVal) {
+    const out = [];
+    const na = vals.sodium === "" || vals.sodium == null ? null : Number(vals.sodium);
+    const fib = vals.fiber === "" || vals.fiber == null ? null : Number(vals.fiber);
+    const kcal = Number(vals.calories) || 0, carbs = Number(vals.carbs) || 0;
+    if (na !== null && na > 0 && na < 5)
+      out.push({ text: na + " mg of sodium is unusually low. Did you mean " + round1(na * 1000) + " mg (" + na + " g)?", label: "Use " + round1(na * 1000) + " mg", action: () => setVal("sodium", round1(na * 1000)) });
+    if (na === 0 && kcal > 80)
+      out.push({ text: "0 mg means this food has no sodium. If you don't know it, leave it blank so it isn't counted as zero.", label: "Leave sodium blank", action: () => setVal("sodium", "") });
+    if (fib === 0 && carbs >= 15)
+      out.push({ text: "0 g fiber with " + carbs + " g carbs is rare. If you don't know it, leave it blank.", label: "Leave fiber blank", action: () => setVal("fiber", "") });
+    return out;
+  }
+  function HintList({ hints }) {
+    if (!hints || !hints.length) return null;
+    return h("div", { style: { display: "flex", flexDirection: "column", gap: 6, margin: "2px 0 10px" } }, hints.map((x, i) =>
+      h("div", { key: i, role: "status", style: { background: "var(--gold-soft)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" } },
+        h("span", { style: { flex: "1 1 180px" } }, x.text),
+        x.action && h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "5px 10px", background: "var(--card)", color: "var(--text)" }, onClick: x.action }, x.label))));
+  }
+
   // Fill a food's missing vitamins & minerals (and potassium) from a similar food, per gram. Nothing it already has changes.
   function estimateMicrosFrom(food, src) {
     if (!food || !src) return food;
@@ -5152,6 +5194,9 @@
         h("label", null, "Sodium (mg)"),
         h("input", { className: "input", type: "number", value: v.sodium, placeholder: "unknown", onChange: onN("sodium") })
       ),
+      // typed sodium/fiber as entered; calories/carbs per 100 g so the thresholds don't depend on the label basis
+      h(HintList, { hints: entryHints({ sodium: v.sodium, fiber: v.fiber, calories: Number(v.calories) * fct, carbs: Number(v.carbs) },
+        (k, val) => setV(s => ({ ...s, [k]: val }))) }),
       h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 12, margin: "4px 0 10px" } },
         h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, "Vitamins & minerals"),
         microSrc
@@ -5190,6 +5235,252 @@
         h("button", { className: "btn", disabled: foodOnly ? !(v.name.trim() && Number(basisG) > 0) : !valid, onClick: submit }, submitLabel || "Add to meal")
       )
     );
+  }
+
+
+  /* ================= My foods: browse, check, edit and delete saved foods ================= */
+  const EDIT_FLAT = [["calories", "Calories", "kcal"], ["protein", "Protein", "g"], ["carbs", "Carbs", "g"], ["fat", "Fat", "g"],
+    ["fiber", "Fiber", "g"], ["sugar", "Sugar", "g"], ["sodium", "Sodium", "mg"], ["satFat", "Saturated fat", "g"], ["potassium", "Potassium", "mg"]];
+  const EDIT_MICROS = () => MANUAL_MORE.filter(([k]) => NUTRIENT_KEYS.indexOf(k) < 0);
+  /* Food sharing: a small JSON file with just the saved foods (no meals, links or personal data). */
+  const FOOD_FILE_TYPE = "fittrack-foods";
+  function packFoods(foods) {
+    return {
+      type: FOOD_FILE_TYPE, version: 1, exportedAt: new Date().toISOString(),
+      foods: (foods || []).map(f => {
+        const { id, ...rest } = f;
+        return rest;
+      })
+    };
+  }
+  // Keeps only known fields with sane values, so a hand-edited or foreign file can't break the app.
+  function cleanSharedFood(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const name = String(raw.name || "").trim().slice(0, 120);
+    if (!name) return null;
+    const num = (x) => { const n = Number(x); return x === null || x === undefined || x === "" || !Number.isFinite(n) || n < 0 ? null : n; };
+    const g = num(raw.g) || 100;
+    const out = { name, serving: typeof raw.serving === "string" ? raw.serving.slice(0, 40) : g + "g", g,
+      src: raw.src === "recipe-custom" ? "recipe-custom" : "custom" };
+    NUTRIENT_KEYS.forEach(k => { out[k] = num(raw[k]); });
+    ["calories", "protein", "carbs", "fat"].forEach(k => { if (out[k] === null) out[k] = 0; });
+    const micros = {};
+    MICRO_KEYS.forEach(k => { const v = num((raw.micros || {})[k]); if (v !== null) micros[k] = v; });
+    if (Object.keys(micros).length) out.micros = micros;
+    if (raw.microsEstimated && out.micros) { out.microsEstimated = true; out.microsFrom = String(raw.microsFrom || "a similar food").slice(0, 160); }
+    if (Array.isArray(raw.units)) out.units = raw.units.filter(u => u && u.label && num(u.g)).slice(0, 10).map(u => ({ label: String(u.label).slice(0, 40), g: num(u.g) }));
+    if (out.src === "recipe-custom" && raw.recipe && Array.isArray(raw.recipe.items)) {
+      out.recipe = { items: raw.recipe.items.filter(it => it && it.name).slice(0, 60).map(it => ({ name: String(it.name).slice(0, 120), grams: num(it.grams) || 0 })),
+        oilG: num(raw.recipe.oilG) || 0, oilType: ["oil", "ghee", "butter"].includes(raw.recipe.oilType) ? raw.recipe.oilType : "oil",
+        saltG: num(raw.recipe.saltG) || 0, cookedG: num(raw.recipe.cookedG) || null };
+    }
+    return out;
+  }
+  function readFoodFile(text) {
+    let j;
+    try { j = JSON.parse(text); } catch (e) { return { error: "This file isn't a FitTrack foods file." }; }
+    // a full app backup also works: take just its saved foods
+    const list = j && j.type === FOOD_FILE_TYPE ? j.foods : (j && Array.isArray(j.customFoods) ? j.customFoods : null);
+    if (!Array.isArray(list)) return { error: "This file isn't a FitTrack foods file." };
+    const seen = new Set(), foods = [];
+    list.forEach(r => { const f = cleanSharedFood(r); if (f && !seen.has(foodNameKey(f.name))) { seen.add(foodNameKey(f.name)); foods.push(f); } });
+    if (!foods.length) return { error: "No foods found in this file." };
+    return { foods, fromBackup: !(j && j.type === FOOD_FILE_TYPE) };
+  }
+
+  function MyFoodsSheet({ open, onClose, data, setData }) {
+    const [q, setQ] = useState("");
+    const [onlyIssues, setOnlyIssues] = useState(false);
+    const [editId, setEditId] = useState(null);
+    const [incoming, setIncoming] = useState(null); // { foods, fileName, fromBackup } while reviewing an import
+    const [onClash, setOnClash] = useState("keep"); // "keep" my version or "update" with theirs
+    const toast = useToast();
+    useEffect(() => { if (open) { setQ(""); setOnlyIssues(false); setEditId(null); setIncoming(null); setOnClash("keep"); } }, [open]);
+
+    const shareFoods = async () => {
+      const list = data.customFoods || [];
+      if (!list.length) { toast("No saved foods to share yet"); return; }
+      const fileName = "fittrack-foods-" + todayKey() + ".json";
+      const text = JSON.stringify(packFoods(list), null, 2);
+      // phones: open the share sheet (WhatsApp, email, Drive…); elsewhere: download the file
+      try {
+        const file = new File([text], fileName, { type: "application/json" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "My FitTrack foods", text: list.length + " foods from FitTrack. Open FitTrack, go to Settings, My foods, Import foods." });
+          return;
+        }
+      } catch (e) { if (e && e.name === "AbortError") return; }
+      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      const a = document.createElement("a"); a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+      toast("Saved " + fileName + " (" + list.length + " foods)");
+    };
+    const pickImport = () => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = "application/json,.json";
+      inp.onchange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.size > 5e6) { toast("That file is too large to be a foods file"); return; }
+        const r = new FileReader();
+        r.onload = () => {
+          const res = readFoodFile(String(r.result || ""));
+          if (res.error) { toast(res.error); return; }
+          setIncoming({ ...res, fileName: file.name }); setOnClash("keep");
+        };
+        r.readAsText(file);
+      };
+      inp.click();
+    };
+    const applyImport = () => {
+      const mine = data.customFoods || [];
+      const names = new Set(mine.map(f => foodNameKey(f.name)));
+      let list = mine, added = 0, updated = 0;
+      incoming.foods.forEach(f => {
+        if (!names.has(foodNameKey(f.name))) { list = [...list, { ...f, id: "custom-" + uid() }]; added++; }
+        else if (onClash === "update") { list = upsertCustomFood(list, f).list; updated++; }
+      });
+      setData({ ...data, customFoods: list });
+      toast("Added " + added + " food" + (added === 1 ? "" : "s") + (updated ? ", updated " + updated : ""));
+      setIncoming(null);
+    };
+    const foods = data.customFoods || [];
+    const withIssues = useMemo(() => foods.map(f => ({ f, issues: foodIssues(f) })), [foods]);
+    const flagged = withIssues.filter(x => x.issues.length).length;
+    const shown = withIssues
+      .filter(x => !onlyIssues || x.issues.length)
+      .filter(x => !q.trim() || String(x.f.name).toLowerCase().includes(q.trim().toLowerCase()))
+      .sort((a, b) => String(a.f.name).localeCompare(String(b.f.name)));
+    const editing = editId ? foods.find(f => f.id === editId) : null;
+
+    const save = (updated) => {
+      const links = { ...(data.microLinks || {}) };
+      Object.keys(links).forEach(k => { if (links[k].id === updated.id) links[k] = { ...links[k], name: updated.name }; });
+      setData({ ...data, customFoods: foods.map(f => f.id === updated.id ? updated : f), microLinks: links });
+      toast("Saved " + updated.name);
+      setEditId(null);
+    };
+    const remove = (food) => {
+      if (!confirm("Delete \u201c" + food.name + "\u201d from your foods?\n\nMeals you've already logged keep their values.")) return;
+      setData({ ...data, customFoods: foods.filter(f => f.id !== food.id) });
+      toast("Deleted " + food.name);
+      setEditId(null);
+    };
+
+    let body;
+    if (incoming) {
+      const mineNames = new Set(foods.map(f => foodNameKey(f.name)));
+      const fresh = incoming.foods.filter(f => !mineNames.has(foodNameKey(f.name)));
+      const clashes = incoming.foods.filter(f => mineNames.has(foodNameKey(f.name)));
+      const withMicros = incoming.foods.filter(f => hasMicros(f)).length;
+      const count = fresh.length + (onClash === "update" ? clashes.length : 0);
+      body = h("div", null,
+        h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, incoming.fileName),
+        h("div", { style: { fontSize: 12.5, color: "var(--muted)", margin: "4px 0 12px" } },
+          incoming.foods.length + " foods, " + withMicros + " with vitamins & minerals." + (incoming.fromBackup ? " This is a full backup; only its saved foods are imported, nothing else." : "")),
+        h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 12, fontSize: 13 } },
+          h("div", null, fresh.length + " new food" + (fresh.length === 1 ? "" : "s") + " will be added."),
+          clashes.length > 0 && h("div", { style: { marginTop: 6 } }, clashes.length + " ha" + (clashes.length === 1 ? "s" : "ve") + " the same name as one of yours:"),
+          clashes.length > 0 && h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 2 } },
+            clashes.slice(0, 6).map(f => f.name).join(", ") + (clashes.length > 6 ? " and " + (clashes.length - 6) + " more" : "")),
+          clashes.length > 0 && h("div", { className: "seg", style: { marginTop: 10 } },
+            h("button", { className: onClash === "keep" ? "active" : "", onClick: () => setOnClash("keep") }, "Keep mine"),
+            h("button", { className: onClash === "update" ? "active" : "", onClick: () => setOnClash("update") }, "Use theirs")),
+          clashes.length > 0 && h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 6 } },
+            onClash === "keep" ? "Your versions stay exactly as they are." : "Their values replace yours. Anything they left blank keeps your value.")),
+        h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 10 } }, "Only foods are imported. Your meals, settings and other data aren't touched."),
+        h("div", { className: "btn-row", style: { marginTop: 12 } },
+          h("button", { className: "btn secondary", onClick: () => setIncoming(null) }, "Cancel"),
+          h("button", { className: "btn", disabled: !count, onClick: applyImport }, count ? "Import " + count + " food" + (count === 1 ? "" : "s") : "Nothing new to import")));
+    } else if (editing) body = h(FoodEditor, { key: editing.id, food: editing, foods, onSave: save, onDelete: () => remove(editing), onBack: () => setEditId(null) });
+    else body = h("div", null,
+      h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginBottom: 10 } },
+        foods.length + " saved food" + (foods.length === 1 ? "" : "s") + (flagged ? ". " + flagged + " ha" + (flagged === 1 ? "s" : "ve") + " values worth checking." : ".")),
+      h("div", { className: "btn-row", style: { marginBottom: 10 } },
+        h("button", { className: "btn secondary", onClick: shareFoods, disabled: !foods.length }, "Share my foods"),
+        h("button", { className: "btn secondary", onClick: pickImport }, "Import foods")),
+      h("input", { className: "input", value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search your foods", "aria-label": "Search your foods", autoCapitalize: "none" }),
+      flagged > 0 && h("div", { className: "seg", style: { margin: "10px 0 4px" } },
+        h("button", { className: !onlyIssues ? "active" : "", onClick: () => setOnlyIssues(false) }, "All foods"),
+        h("button", { className: onlyIssues ? "active" : "", onClick: () => setOnlyIssues(true) }, "Worth checking (" + flagged + ")")),
+      !foods.length && h("div", { className: "empty-state" }, h("div", { className: "t" }, "No saved foods yet"),
+        h("div", { className: "s" }, "Foods you enter manually or build as recipes show up here. Got a foods file from someone? Tap Import foods.")),
+      foods.length > 0 && !shown.length && h("div", { className: "empty-state" }, h("div", { className: "t" }, "No foods match \u201c" + q.trim() + "\u201d")),
+      h("div", { className: "search-list", style: { marginTop: 8, maxHeight: "none" } }, shown.map(({ f, issues }) => {
+        const f100 = 100 / foodBaseGrams(f);
+        const tags = [f.src === "recipe-custom" ? "Recipe" : null, f.microsEstimated ? "Vitamins estimated" : (hasMicros(f) ? null : "No vitamins")].filter(Boolean);
+        return h("div", { key: f.id, className: "search-item", onClick: () => setEditId(f.id) },
+          h("div", { style: { flex: 1, minWidth: 0 } },
+            h("div", { className: "nm" }, f.name),
+            h("div", { className: "sv" }, "per 100 g: P" + round1((f.protein || 0) * f100) + " C" + round1((f.carbs || 0) * f100) + " F" + round1((f.fat || 0) * f100) + (tags.length ? " \u00b7 " + tags.join(", ") : "")),
+            issues.length > 0 && h("div", { style: { fontSize: 11.5, color: "var(--gold)", marginTop: 2 } }, issues.length === 1 ? "1 value to check" : issues.length + " values to check")),
+          h("div", { className: "cal" }, Math.round((f.calories || 0) * f100) + " kcal"));
+      })));
+    return h(Sheet, { open, onClose, title: incoming ? "Import foods" : editing ? "Edit food" : "My foods" }, body);
+  }
+
+  function FoodEditor({ food, foods, onSave, onDelete, onBack }) {
+    const toStr = (x) => x === null || x === undefined ? "" : String(x);
+    const [name, setName] = useState(food.name || "");
+    const [vals, setVals] = useState(() => {
+      const o = {};
+      EDIT_FLAT.forEach(([k]) => { o[k] = toStr(food[k]); });
+      EDIT_MICROS().forEach(([k]) => { o[k] = toStr((food.micros || {})[k]); });
+      return o;
+    });
+    const setVal = (k, v) => setVals(s => ({ ...s, [k]: v === "" ? "" : String(v) }));
+    const num = (x) => x === "" ? null : Number(x);
+    const base = foodBaseGrams(food);
+    const draft = (() => {
+      const out = { ...food, name: name.trim(), micros: {} };
+      EDIT_FLAT.forEach(([k]) => { out[k] = num(vals[k]); });
+      ["calories", "protein", "carbs", "fat"].forEach(k => { if (out[k] === null) out[k] = 0; });
+      EDIT_MICROS().forEach(([k]) => { const v = num(vals[k]); if (v !== null && !Number.isNaN(v)) out.micros[k] = v; });
+      return out;
+    })();
+    const nutritionChanged = EDIT_FLAT.some(([k]) => num(vals[k]) !== (food[k] === undefined ? null : food[k]) && !(num(vals[k]) === null && food[k] == null))
+      || EDIT_MICROS().some(([k]) => num(vals[k]) !== ((food.micros || {})[k] ?? null));
+    const microsChanged = EDIT_MICROS().some(([k]) => num(vals[k]) !== ((food.micros || {})[k] ?? null));
+    const clash = foods.find(f => f.id !== food.id && foodNameKey(f.name) === foodNameKey(name));
+    const invalid = !name.trim() || clash || Object.values(vals).some(x => x !== "" && (Number.isNaN(Number(x)) || Number(x) < 0));
+    const isRecipe = food.src === "recipe-custom";
+    // sodium/fiber problems that have a one-tap fix are shown next to the fields instead
+    const issues = foodIssues(draft).filter(x => !["sodium-g", "sodium-0", "fiber-0"].includes(x.key));
+
+    const submit = () => {
+      const out = { ...draft };
+      if (!Object.keys(out.micros).length) { delete out.micros; delete out.microsEstimated; delete out.microsFrom; }
+      else if (microsChanged && food.microsEstimated) out.microsFrom = (food.microsFrom || "a similar food") + " (some values edited)";
+      if (isRecipe && nutritionChanged) { out.src = "custom"; delete out.recipe; }
+      onSave(out);
+    };
+    const field = ([k, label, unit]) => h("div", { key: k },
+      h("label", null, label + " (" + unit + ")"),
+      h("input", { className: "input", type: "number", step: "any", inputMode: "decimal", value: vals[k], placeholder: "unknown", "aria-label": label + " (" + unit + ")",
+        onChange: (e) => setVal(k, e.target.value) }));
+
+    return h("div", null,
+      h("div", { className: "field" }, h("label", null, "Name"),
+        h("input", { className: "input", value: name, "aria-label": "Food name", onChange: (e) => setName(e.target.value) })),
+      clash && h("div", { style: { fontSize: 12, color: "var(--danger)", margin: "-4px 0 10px" } }, "You already have a food called \u201c" + clash.name + "\u201d. Pick a different name."),
+      h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 8 } },
+        "Values per " + base + " g." + (isRecipe ? " Built from ingredients." : "") + " Leave a field blank if it isn't known."),
+      issues.length > 0 && h("div", { style: { background: "var(--gold-soft)", borderRadius: 10, padding: "8px 10px", fontSize: 12.5, marginBottom: 10 } },
+        issues.map(x => h("div", { key: x.key, style: { margin: "2px 0" } }, x.text))),
+      h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 } }, EDIT_FLAT.slice(0, 6).map(field)),
+      h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 } }, EDIT_FLAT.slice(6).map(field)),
+      h(HintList, { hints: entryHints({ sodium: vals.sodium, fiber: vals.fiber, calories: Number(vals.calories) * 100 / base, carbs: Number(vals.carbs) }, setVal) }),
+      h("div", { style: { fontSize: 13.5, fontWeight: 600, margin: "14px 0 2px" } }, "Vitamins & minerals"),
+      h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 8 } },
+        food.microsEstimated ? "Estimated from " + (food.microsFrom || "a similar food") + ". Values you type here replace the estimates." : "Leave blank what the label doesn't list."),
+      h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, EDIT_MICROS().map(field)),
+      isRecipe && nutritionChanged && h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 10 } },
+        "Saving changed values turns this recipe into a plain food, so its ingredient list is removed. To change ingredients instead, open it from search and tap Edit recipe."),
+      h("div", { className: "btn-row", style: { marginTop: 14 } },
+        h("button", { className: "btn secondary", onClick: onBack }, "Back"),
+        h("button", { className: "btn", disabled: invalid, onClick: submit }, "Save")),
+      h("button", { className: "btn secondary", style: { marginTop: 10, color: "var(--danger)" }, onClick: onDelete }, "Delete food"));
   }
 
   /* ---------- Workouts ---------- */
@@ -7525,6 +7816,7 @@
         profileRow("Active source", PROVIDERS[data.providers.active].name, () => onOpenSheet("providers")),
         profileRow("Nutrient targets", Object.keys(data.profile.nutrientTargets || {}).length ? Object.keys(data.profile.nutrientTargets).length + " custom" : "Defaults", () => onOpenSheet("nutrient-targets")),
         profileRow("Supplements", (data.supplements || []).filter(x => !x.archived).length + " in stack", () => onOpenSheet("supplements")),
+        profileRow("My foods", (data.customFoods || []).length + " saved", () => onOpenSheet("my-foods")),
         profileRow("Fill in missing nutrients", Object.keys(data.microLinks || {}).length ? Object.keys(data.microLinks).length + " linked foods" : "For past meals", () => onOpenSheet("fill-nutrients"))
       ),
 
@@ -8007,7 +8299,8 @@
       h(SupplementsSheet, { open: sheet && sheet.type === "supplements", onClose: closeSheet, data, setData }),
       h(DayNutrientsSheet, { open: sheet && sheet.type === "day-nutrients", onClose: closeSheet, data, activeDate, onOpenFill: () => setSheet({ type: "fill-nutrients" }) }),
       h(NutrientTargetsSheet, { open: sheet && sheet.type === "nutrient-targets", onClose: closeSheet, data, setData }),
-      h(FillNutrientsSheet, { open: sheet && sheet.type === "fill-nutrients", onClose: closeSheet, data, setData })
+      h(FillNutrientsSheet, { open: sheet && sheet.type === "fill-nutrients", onClose: closeSheet, data, setData }),
+      h(MyFoodsSheet, { open: sheet && sheet.type === "my-foods", onClose: closeSheet, data, setData })
     );
   }
 
@@ -8015,14 +8308,11 @@
   const root = ReactDOM.createRoot(document.getElementById("root"));
   root.render(h(ToastProvider, null, h(App)));
 
-  /* ---------- Service Worker (best effort) ---------- */
-  if ("serviceWorker" in navigator) {
-    const swCode = "const C='fittrack-v1';self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(caches.open(C).then(c=>c.match(e.request).then(r=>r||fetch(e.request).then(res=>{try{c.put(e.request,res.clone())}catch(x){}return res}).catch(()=>r))))});";
-    try {
-      const blob = new Blob([swCode], { type: "application/javascript" });
-      const url = URL.createObjectURL(blob);
-      navigator.serviceWorker.register(url).catch(() => {});
-    } catch(e) {}
+  /* ---------- Service worker: offline support ----------
+     Needs sw.js next to this file and the app opened over https (or localhost). Browsers refuse service workers
+     from blob: or file:// URLs, so opened as a local file the app simply works online-only. */
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 })();
 </script>

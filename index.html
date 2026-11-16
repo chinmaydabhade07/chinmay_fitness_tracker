@@ -655,7 +655,7 @@
       days: d.days || {},
       weightLog: d.weightLog || [],
       sleepLog: d.sleepLog || [],
-      customFoods: d.customFoods || [],
+      customFoods: dedupeCustomFoods(d.customFoods || []),
       savedMeals: d.savedMeals || [],
       supplements: d.supplements || [],
       microLinks: d.microLinks || {},
@@ -690,6 +690,46 @@
     return todayKey(dt);
   }
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+  // Saved foods are unique by name: search shows one food per name, so saving under an existing name
+  // must update that food (same id, so links keep working) rather than add a hidden duplicate.
+  const foodNameKey = (n) => String(n || "").toLowerCase().trim();
+  // opts.keepMacros: never change the saved calories/protein/carbs/fat (used by the fill tool, which only adds vitamins).
+  function upsertCustomFood(list, food, opts) {
+    const arr = list || [];
+    const i = arr.findIndex(f => foodNameKey(f.name) === foodNameKey(food.name));
+    if (i < 0) { const id = food.id && String(food.id).startsWith("custom-") ? food.id : "custom-" + uid(); return { list: [...arr, { ...food, id }], id, replaced: false }; }
+    const id = arr[i].id, prev = arr[i];
+    // fields left blank (unknown) keep the saved value; vitamins are replaced as a set only when new ones are given
+    const merged = { ...prev };
+    const MACROS = ["calories", "protein", "carbs", "fat"];
+    // an all-zero macro set means the macro fields were left untouched, not that the food has no calories
+    const macrosBlank = MACROS.every(k => !Number(food[k]));
+    const skipMacros = (opts && opts.keepMacros) || (macrosBlank && Number(prev.calories) > 0);
+    Object.keys(food).forEach(k => {
+      if (k === "micros" || (skipMacros && MACROS.includes(k))) return;
+      if (food[k] !== null && food[k] !== undefined && food[k] !== "") merged[k] = food[k];
+    });
+    if (food.micros && Object.keys(food.micros).length) {
+      // new values win key by key; saved values fill the rest (and keep their "estimated" note if any remain)
+      merged.micros = { ...(prev.micros || {}), ...food.micros };
+      const keptOld = Object.keys(prev.micros || {}).some(k => food.micros[k] == null);
+      if (food.microsEstimated) { merged.microsEstimated = true; merged.microsFrom = food.microsFrom; }
+      else if (!(keptOld && prev.microsEstimated)) { delete merged.microsEstimated; delete merged.microsFrom; }
+    }
+    if (food.src !== "recipe-custom") delete merged.recipe;
+    if (food.units && !food.units.length && prev.units && prev.units.length) merged.units = prev.units;
+    return { list: arr.map((f, j) => j === i ? { ...merged, id } : f), id, replaced: true };
+  }
+  // Older versions could save several foods with one name; only the first was ever shown. Keep the newest values under the first id.
+  function dedupeCustomFoods(list) {
+    const out = [], at = {};
+    (list || []).forEach(f => {
+      const k = foodNameKey(f.name);
+      if (k && at[k] !== undefined) out[at[k]] = { ...f, id: out[at[k]].id, name: out[at[k]].name };
+      else { if (k) at[k] = out.length; out.push(f); }
+    });
+    return out;
+  }
   function clamp(v, min, max) { v = Number(v); if (!isFinite(v)) return min; return Math.min(max, Math.max(min, v)); }
   function daysInMonthArr(year, month) {
     const out = [];
@@ -3891,6 +3931,60 @@
     return out;
   }
   const hasMicros = (x) => x && x.micros && Object.keys(x.micros).length >= 3;
+  // Foods with vitamins & minerals that resemble a name: full name first, then its distinctive words
+  // (e.g. "Okra Sabji (Bhindi)" -> okra, bhindi). Used to estimate micros for foods entered by hand.
+  function similarMicroFoods(name, customFoods, limit) {
+    const GENERIC = /^(sabji|sabzi|bhaji|curry|cooked|plain|dish|fry|masala|with|and|the|homemade|home|style|restaurant)$/i;
+    const nm = String(name || "").trim();
+    if (nm.length < 2) return [];
+    const queries = [nm, ...nm.split(/[^A-Za-z]+/).filter(w => w.length >= 3 && !GENERIC.test(w))];
+    const hits = new Map(), order = [];
+    queries.forEach((q, qi) => searchLocal(q, { customFoods, limit: 15 }).forEach((f, rank) => {
+      if (f.type === "combo" || f.src === "recent" || !hasMicros(f)) return;
+      if (!hits.has(f.id)) { hits.set(f.id, { f, n: 0, first: order.length, best: 99 }); order.push(f.id); }
+      const e = hits.get(f.id);
+      e.n += qi === 0 ? 3 : 1; e.best = Math.min(e.best, rank);
+    }));
+    return Array.from(hits.values()).sort((a, b) => b.n - a.n || a.best - b.best || a.first - b.first).map(x => x.f).slice(0, limit || 6);
+  }
+  // Fill a food's missing vitamins & minerals (and potassium) from a similar food, per gram. Nothing it already has changes.
+  function estimateMicrosFrom(food, src) {
+    if (!food || !src) return food;
+    const f = foodBaseGrams(food) / foodBaseGrams(src);
+    const micros = { ...(food.micros || {}) };
+    Object.keys(src.micros || {}).forEach(k => { if (micros[k] == null && src.micros[k] != null) micros[k] = Math.round(src.micros[k] * f * 1000) / 1000; });
+    const out = { ...food, micros, microsEstimated: true, microsFrom: src.name };
+    if (food.potassium == null && src.potassium != null) out.potassium = Math.round(src.potassium * f * 10) / 10;
+    return out;
+  }
+  // Suggestions + search for a similar food with vitamin data. onPick(food) receives the chosen food.
+  function MicroSourcePicker({ name, customFoods, onPick }) {
+    const [q, setQ] = useState(null); // null = search closed
+    const suggest = useMemo(() => similarMicroFoods(name, customFoods, 3), [name, customFoods]);
+    const results = useMemo(() => q && q.trim()
+      ? searchLocal(q, { customFoods, limit: 20 }).filter(f => f.type !== "combo" && f.src !== "recent" && hasMicros(f)).slice(0, 8) : [], [q, customFoods]);
+    const sub = (f) => (SRC_LABEL[f.src] || "Built-in") + " \u00b7 " + Object.keys(f.micros || {}).length + " nutrients";
+    const pill = { border: "none", cursor: "pointer", padding: "5px 10px" };
+    return h(React.Fragment, null,
+      h("div", { style: { fontSize: 12, color: "var(--muted)", margin: "3px 0 8px" } },
+        suggest.length ? "Copy them from a similar food:" : String(name || "").trim() ? "No close match by name. Search for a similar food:" : "Type the name above to see similar foods."),
+      suggest.length > 0 && q === null && h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+        suggest.map(f => h("button", { key: f.id, className: "search-item", style: { width: "100%", textAlign: "left", font: "inherit", color: "inherit", background: "transparent", border: "1px solid var(--border-soft)", borderRadius: 10 },
+          onClick: () => onPick(f) },
+          h("div", { style: { flex: 1, minWidth: 0 } }, h("div", { className: "nm" }, f.name), h("div", { className: "sv" }, sub(f))),
+          h("div", { className: "cal", style: { color: "var(--primary)" } }, "Use")))),
+      q === null
+        ? h("button", { className: "pill", style: { ...pill, marginTop: 8 }, onClick: () => setQ("") }, "Search for another food")
+        : h("div", { style: { marginTop: 4 } },
+            h("input", { className: "input", value: q, autoFocus: true, autoCapitalize: "none", placeholder: "e.g. noodles, mango, paneer, rohu", "aria-label": "Search for a similar food",
+              onChange: (e) => setQ(e.target.value) }),
+            results.length > 0 && h("div", { className: "search-list", style: { maxHeight: 220, marginTop: 6 } }, results.map((f, i) =>
+              h("div", { key: (f.id || "") + i, className: "search-item", onClick: () => { onPick(f); setQ(null); } },
+                h("div", { style: { flex: 1, minWidth: 0 } }, h("div", { className: "nm" }, f.name), h("div", { className: "sv" }, sub(f))),
+                h("div", { className: "cal" }, "+")))),
+            q.trim() && !results.length && h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 6 } }, "No food with vitamin data matches \u201c" + q.trim() + "\u201d."),
+            h("button", { className: "pill", style: { ...pill, marginTop: 8 }, onClick: () => setQ(null) }, "Close search")));
+  }
   function findLinkedFood(data, link) {
     if (!link) return null;
     return LOCAL_FOODS.find(f => f.id === link.id) || (data.customFoods || []).find(f => f.id === link.id) || null;
@@ -3969,12 +4063,12 @@
       if (!picks.length) return;
       const links = { ...(data.microLinks || {}) };
       const foods = {}, overwrite = {};
-      const newCustom = [];
+      let customList = data.customFoods || [];
       picks.forEach(g => {
         let f = candsFor(g).find(c => c.id === choice[g.key].id);
         if (!f) return;
-        // foods found online or entered manually are saved to your foods so the link keeps working
-        if ((extra[g.key] || []).some(x => x.id === f.id)) { f = { ...f, id: "custom-" + uid() }; newCustom.push(f); }
+        // foods found online or entered manually are saved to your foods (updating one with the same name) so the link keeps working
+        if ((extra[g.key] || []).some(x => x.id === f.id)) { const r = upsertCustomFood(customList, f, { keepMacros: !choice[g.key].overwrite }); customList = r.list; f = { ...f, id: r.id }; }
         links[g.key] = { id: f.id, name: f.name, overwrite: !!choice[g.key].overwrite };
         foods[g.key] = f; overwrite[g.key] = !!choice[g.key].overwrite;
       });
@@ -3991,7 +4085,7 @@
           return out;
         }) };
       });
-      setData({ ...data, days, microLinks: links, customFoods: [...(data.customFoods || []), ...newCustom] });
+      setData({ ...data, days, microLinks: links, customFoods: customList });
       setExtra({});
       toast("Filled nutrients for " + filled + " past meal" + (filled === 1 ? "" : "s"));
     };
@@ -4008,7 +4102,13 @@
     const pending = groups.filter(g => !g.link && choice[g.key] && choice[g.key].on);
     const pendingMeals = pending.reduce((s, g) => s + g.missing, 0);
 
-    return h(Sheet, { open, onClose, title: "Fill in missing nutrients" },
+    // values entered or found here are only saved when "Fill" is tapped, so don't let them vanish silently on close
+    const unsavedExtras = pending.some(g => (extra[g.key] || []).some(f => f.id === (choice[g.key] || {}).id));
+    const guardedClose = () => {
+      if (unsavedExtras && !confirm("The values you entered aren't saved yet. Close without saving them?\n\nTap Cancel, then the Fill button at the bottom, to save.")) return;
+      onClose();
+    };
+    return h(Sheet, { open, onClose: guardedClose, title: "Fill in missing nutrients" },
       h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginBottom: 10 } },
         "These foods were logged without vitamins and minerals. Link each one to a similar built-in food to borrow its missing values per gram. Your logged calories and macros stay exactly as they are, the link also applies whenever you log that food again, and you can undo it any time."),
       !groups.length && h("div", { className: "empty-state" }, h("div", { className: "t" }, "Every logged meal already has nutrient data.")),
@@ -4061,7 +4161,7 @@
                   h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 8 } },
                     "Copy values from a label or a nutrition site. ",
                     h("a", { href: googleNutritionUrl(g.name), target: "_blank", rel: "noopener", style: { color: "var(--primary)" } }, "Search Google for " + g.name + " ↗")),
-                  h(ManualFoodEntry, { foodOnly: true, initialName: g.name, submitLabel: "Use these values", onFood: (f) => addExtra(g, f) }))));
+                  h(ManualFoodEntry, { foodOnly: true, initialName: g.name, submitLabel: "Use these values", customFoods: data.customFoods, onFood: (f) => { addExtra(g, f); toast("Values ready. Tap Fill at the bottom to save them"); } }))));
       }),
       groups.length > 0 && h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 10 } },
         "Same-name matches are ticked for you; tick others only if the dish really is similar."),
@@ -4359,6 +4459,8 @@
     const [quickPreview, setQuickPreview] = useState(null); // [{ text, food, grams }]
     const [saveName, setSaveName] = useState(null); // non-null while naming a saved meal
     const [forceOnline, setForceOnline] = useState(false); // one-off USDA keyword search when no online source is set
+    const [rebuild, setRebuild] = useState(null); // saved food being rebuilt from ingredients
+    const [microPick, setMicroPick] = useState(null); // similar food lending vitamins to the selected food
     const toast = useToast();
     const inputRef = useRef();
     const recentFoods = useMemo(() => recentFoodsFrom(data.days, 10), [data.days, open]);
@@ -4382,6 +4484,8 @@
         setQuickPreview(null);
         setSaveName(null);
         setForceOnline(false);
+        setRebuild(null);
+        setMicroPick(null);
         setTimeout(() => { try { inputRef.current && inputRef.current.focus(); } catch(e) {} }, 320);
       }
     }, [open]);
@@ -4416,6 +4520,9 @@
     const selectFood = (food) => {
       if (food.type === "combo") { setSelectedCombo(food); return; }
       setSelected(food);
+      // a product estimated before (e.g. a scanned item) reuses the same similar food automatically
+      const savedLink = !hasMicros(food) ? (data.microLinks || {})[String(food.name || "").toLowerCase().trim()] : null;
+      setMicroPick(savedLink ? findLinkedFood(data, savedLink) : null);
       // Edamam search results carry only 5 values — fetch the full nutrient panel in the background
       if (food.edamamFoodId && onlineProv && onlineProv.detail) {
         setSelected({ ...food, loadingDetail: true });
@@ -4444,6 +4551,10 @@
 
     const commit = (food, weightGrams) => {
       const next = { ...data };
+      // remember the similar food for this product name, so the next scan or log fills itself
+      if (microPick && food.microsFrom === microPick.name) {
+        next.microLinks = { ...(data.microLinks || {}), [String(food.name || "").toLowerCase().trim()]: { id: microPick.id, name: microPick.name, overwrite: false } };
+      }
       const d = ensureDay(next.days, activeDate);
       d.meals.push(mealFromFoodLinked(applyOil(food, oil), weightGrams));
       if (food.oilG && oil !== data.profile.oilLevel) next.profile = { ...data.profile, oilLevel: oil }; // remember last choice
@@ -4455,15 +4566,24 @@
     // Manual / recipe entries already come pre-scaled to the logged weight — add as-is.
     // foodForDb (optional) is saved to the food database in the SAME setData call as the meal push,
     // since two separate setData calls in one handler would otherwise race on the stale `data` closure.
+    // food may be null when only the saved food changes (rebuilding a recipe without logging it).
     const pickManual = (food, foodForDb) => {
       const next = { ...data };
-      const d = ensureDay(next.days, activeDate);
-      d.meals.push({ id: uid(), slot: slot || "snacks", time: Date.now(), qty: 1, ...food });
-      if (foodForDb) {
-        next.customFoods = [...(next.customFoods || []), { ...foodForDb, id: "custom-" + uid() }];
+      if (food) {
+        const d = ensureDay(next.days, activeDate);
+        d.meals.push({ id: uid(), slot: slot || "snacks", time: Date.now(), qty: 1, ...food });
+      }
+      if (foodForDb && foodForDb.replaceId) {
+        const { replaceId, ...rest } = foodForDb;
+        next.customFoods = (next.customFoods || []).map(f => f.id === replaceId ? { ...rest, id: replaceId } : f);
+      }
+      let updated = false;
+      if (foodForDb && !foodForDb.replaceId) {
+        const r = upsertCustomFood(next.customFoods, foodForDb);
+        next.customFoods = r.list; updated = r.replaced;
       }
       setData(next);
-      toast("Added " + food.name);
+      toast(food ? "Added " + food.name + (updated ? " and updated your saved food" : "") : "Saved " + foodForDb.name);
       onClose();
     };
 
@@ -4554,7 +4674,9 @@
                color: active ? "var(--primary)" : undefined }
     }, label);
 
-    const effective = selected ? applyOil(selected, oil) : null;
+    const needsMicros = !!selected && !selected.loadingDetail && !hasMicros(selected);
+    const baseSelected = selected && needsMicros && microPick ? estimateMicrosFrom(selected, microPick) : selected;
+    const effective = baseSelected ? applyOil(baseSelected, oil) : null;
     const preview = effective ? scaleFoodToWeight(effective, grams) : null;
     const extraLine = (n) => {
       const parts = [];
@@ -4565,7 +4687,7 @@
     };
 
     const seg = h("div", { className: "seg" },
-      h("button", { className: mode === "search" ? "active" : "", onClick: () => { setMode("search"); setSelected(null); setSelectedCombo(null); } }, "Search"),
+      h("button", { className: mode === "search" ? "active" : "", onClick: () => { setMode("search"); setSelected(null); setSelectedCombo(null); setRebuild(null); } }, "Search"),
       h("button", { className: mode === "scan" ? "active" : "", onClick: () => { setMode("scan"); setSelected(null); } }, "Scan"),
       h("button", { className: mode === "quick" ? "active" : "", onClick: () => setMode("quick") }, "Quick add"),
       h("button", { className: mode === "manual" ? "active" : "", onClick: () => setMode("manual") }, "Manual")
@@ -4649,10 +4771,29 @@
           effective && effective.oilGrams != null && h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 2 } },
             "Includes about " + Math.round(effective.oilGrams * (Number(grams) || 0) / foodBaseGrams(selected) * 10) / 10 + "g " + (selected.oilType || "oil")))
         ,
+        needsMicros && h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 12, marginBottom: 14 } },
+          h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, "Vitamins & minerals"),
+          microPick
+            ? h(React.Fragment, null,
+                h("div", { style: { fontSize: 12.5, marginTop: 4 } }, "Estimated from ", h("b", null, microPick.name), ", copied per gram."),
+                h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 2 } }, "The label values above aren't changed. This choice is remembered for " + (String(selected.id || "").startsWith("off-") ? "this product." : "this food.")),
+                h("div", { style: { display: "flex", gap: 6, marginTop: 8 } },
+                  h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "5px 10px" }, onClick: () => setMicroPick(null) }, "Pick a different food")))
+            : h(React.Fragment, null,
+                h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 3 } },
+                  String(selected.id || "").startsWith("off-") ? "This product's label data has no vitamins or minerals." : "This food has no vitamin or mineral data."),
+                h(MicroSourcePicker, { name: String(selected.name || "").split(" \u00b7 ")[0], customFoods: data.customFoods, onPick: setMicroPick }))),
         h("div", { className: "btn-row" },
           h("button", { className: "btn secondary", onClick: () => setSelected(null) }, "Back"),
-          h("button", { className: "btn", disabled: !grams || grams <= 0 || selected.loadingDetail, onClick: () => { const { loadingDetail, edamamFoodId, ...f } = selected; commit(f, Number(grams)); } }, "Add to meal")
-        )
+          h("button", { className: "btn", disabled: !grams || grams <= 0 || selected.loadingDetail, onClick: () => { const { loadingDetail, edamamFoodId, ...f } = baseSelected; commit(f, Number(grams)); } }, "Add to meal")
+        ),
+        String(selected.id || "").startsWith("custom-") && h("div", { style: { marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-soft)" } },
+          h("div", { style: { fontSize: 12, color: "var(--muted)", marginBottom: 8 } },
+            selected.microsEstimated
+              ? "Vitamins & minerals here are estimated" + (selected.microsFrom ? " from " + selected.microsFrom : "") + ". Rebuild it from ingredients for accurate values."
+              : selected.src === "recipe-custom" ? "Change the ingredients or amounts of this recipe." : "Know the ingredients? Rebuild it as a recipe for accurate vitamins & minerals."),
+          h("button", { className: "btn secondary", onClick: () => { setRebuild(selected); setSelected(null); setMode("manual"); setManualMode("recipe"); } },
+            selected.src === "recipe-custom" ? "Edit recipe" : "Rebuild as a recipe"))
       );
     } else if (mode === "search") {
       const q = query.trim();
@@ -4710,8 +4851,8 @@
           h("button", { className: manualMode === "per100" ? "active" : "", onClick: () => setManualMode("per100") }, "Enter nutrition"),
           h("button", { className: manualMode === "recipe" ? "active" : "", onClick: () => setManualMode("recipe") }, "Build a recipe")),
         manualMode === "recipe"
-          ? h(RecipeBuilder, { onAdd: pickManual, searchOpts, defaultName: query.trim() })
-          : h(ManualFoodEntry, { onAdd: pickManual, initialName: query.trim() }));
+          ? h(RecipeBuilder, { key: rebuild ? rebuild.id : "new", onAdd: pickManual, searchOpts, defaultName: query.trim(), replaceFood: rebuild })
+          : h(ManualFoodEntry, { onAdd: pickManual, initialName: query.trim(), customFoods: data.customFoods }));
     }
 
     return h(Sheet, { open, onClose, title: "Add to " + slotName }, seg, body);
@@ -4719,16 +4860,22 @@
 
   // Build a dish from ingredients: nutrition per 100 g of the cooked dish is computed from the
   // ingredients, the oil and the final cooked weight, then saved as your own food.
-  function RecipeBuilder({ onAdd, searchOpts, defaultName }) {
-    const [name, setName] = useState(defaultName || "");
-    const [items, setItems] = useState([]); // [{ food, grams }]
+  // replaceFood: a saved food being rebuilt; saving replaces it (same id) instead of adding a new one.
+  function RecipeBuilder({ onAdd, searchOpts, defaultName, replaceFood }) {
+    const rec = (replaceFood && replaceFood.recipe) || null;
+    const [name, setName] = useState(replaceFood ? replaceFood.name : (defaultName || ""));
+    const [items, setItems] = useState(() => !rec ? [] : (rec.items || []).map(it => {
+      const food = LOCAL_FOODS.find(f => f.name === it.name) || (searchOpts.customFoods || []).find(f => f.name === it.name && f.id !== replaceFood.id);
+      return food ? { food, grams: it.grams } : null;
+    }).filter(Boolean)); // [{ food, grams }]
     const [q, setQ] = useState("");
-    const [oilTsp, setOilTsp] = useState(2);
-    const [oilType, setOilType] = useState("oil");
-    const [saltG, setSaltG] = useState(0);
-    const [cooked, setCooked] = useState("");
-    const [portion, setPortion] = useState(150);
+    const [oilTsp, setOilTsp] = useState(rec ? Math.round((rec.oilG || 0) / 5 * 10) / 10 : 2);
+    const [oilType, setOilType] = useState(rec && rec.oilType ? rec.oilType : "oil");
+    const [saltG, setSaltG] = useState(rec ? rec.saltG || 0 : 0);
+    const [cooked, setCooked] = useState(rec && rec.cookedG ? rec.cookedG : "");
+    const [portion, setPortion] = useState(replaceFood && replaceFood.units && replaceFood.units[0] ? replaceFood.units[0].g : 150);
     const [saveForFuture, setSaveForFuture] = useState(true);
+    const lostItems = rec ? (rec.items || []).length - items.length : 0;
     const results = useMemo(() => q.trim() ? searchLocal(q, { customFoods: searchOpts.customFoods, freq: searchOpts.freq, limit: 6 }).filter(f => f.type !== "combo") : [], [q]);
     const rawTotal = items.reduce((s, it) => s + (Number(it.grams) || 0), 0) + (Number(oilTsp) || 0) * 5 + (Number(saltG) || 0);
     const cookedG = Number(cooked) > 0 ? Number(cooked) : rawTotal;
@@ -4758,9 +4905,11 @@
 
     const portionN = scaleFoodToWeight(per100, Number(portion) || 0);
     const valid = name.trim() && items.length > 0 && cookedG > 0 && Number(portion) > 0;
-    const submit = () => {
+    const submit = (logIt) => {
       const recipeInfo = { items: items.map(it => ({ name: it.food.name, grams: Number(it.grams) || 0 })), oilG: (Number(oilTsp) || 0) * 5, oilType, saltG: Number(saltG) || 0, cookedG };
-      const foodForDb = saveForFuture ? { name: name.trim(), serving: "100g", g: 100, src: "recipe-custom", ...per100, units: [{ label: "1 serving", g: Number(portion) }], recipe: recipeInfo } : null;
+      const foodForDb = (saveForFuture || replaceFood) ? { name: name.trim(), serving: "100g", g: 100, src: "recipe-custom", ...per100, units: [{ label: "1 serving", g: Number(portion) }], recipe: recipeInfo,
+        ...(replaceFood ? { replaceId: replaceFood.id } : {}) } : null;
+      if (logIt === false) { onAdd(null, foodForDb); return; }
       onAdd({
         id: "recipe-" + uid(), name: name.trim(), serving: portion + "g", grams: Number(portion), baseGrams: 100,
         baseNutrition: nutritionOf(per100), units: [{ label: "1 serving", g: Number(portion) }], src: "recipe-custom", ...portionN
@@ -4768,6 +4917,9 @@
     };
 
     return h("div", null,
+      replaceFood && h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 10, fontSize: 12.5, marginBottom: 12 } },
+        "Saving replaces your saved \u201c" + replaceFood.name + "\u201d. Meals you've already logged keep their values.",
+        lostItems > 0 && h("div", { style: { color: "var(--danger)", marginTop: 4 } }, lostItems + " ingredient" + (lostItems > 1 ? "s" : "") + " from the old recipe couldn't be found. Add " + (lostItems > 1 ? "them" : "it") + " again.")),
       h("div", { className: "field" }, h("label", null, "Dish name"),
         h("input", { className: "input", value: name, onChange: (e) => setName(e.target.value), placeholder: "e.g. Aai's methi thepla" })),
       h("div", { className: "field" }, h("label", null, "Add ingredients (raw weights)"),
@@ -4800,10 +4952,14 @@
         h("div", { style: { fontSize: 12.5, color: "var(--muted)", marginTop: 3 } },
           "P" + portionN.protein + "g · C" + portionN.carbs + "g · F" + portionN.fat + "g for " + portion + "g"),
         h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 2 } }, "Per 100 g: " + Math.round(per100.calories) + " kcal")),
-      h("label", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 14, cursor: "pointer" } },
+      !replaceFood && h("label", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 14, cursor: "pointer" } },
         h("input", { type: "checkbox", checked: saveForFuture, onChange: (e) => setSaveForFuture(e.target.checked), style: { width: 16, height: 16 } }),
         h("span", { style: { fontSize: 12.5 } }, "Save this recipe to my foods")),
-      h("button", { className: "btn", style: { marginTop: 12 }, disabled: !valid, onClick: submit }, "Add to meal")
+      replaceFood
+        ? h("div", { className: "btn-row", style: { marginTop: 12 } },
+            h("button", { className: "btn secondary", disabled: !valid, onClick: () => submit(false) }, "Save recipe"),
+            h("button", { className: "btn", disabled: !valid, onClick: () => submit(true) }, "Save and add to meal"))
+        : h("button", { className: "btn", style: { marginTop: 12 }, disabled: !valid, onClick: () => submit(true) }, "Add to meal")
     );
   }
 
@@ -4907,7 +5063,7 @@
     ["ala", "Omega-3 ALA", "g"], ["epa", "EPA", "mg"], ["dha", "DHA", "mg"]
   ];
   // foodOnly: just define a food (no portion, no logging) and hand it to onFood — used by the fill tool.
-  function ManualFoodEntry({ onAdd, foodOnly, initialName, onFood, submitLabel }) {
+  function ManualFoodEntry({ onAdd, foodOnly, initialName, onFood, submitLabel, customFoods }) {
     // Nutrition is entered per 100g/100ml (a fixed, reusable basis) plus the weight of the portion
     // actually being logged today — macros for that portion are derived automatically, and the
     // per-100g values can be saved straight into the food database for next time.
@@ -4918,6 +5074,7 @@
     const [more, setMore] = useState({});          // optional extra nutrients, same basis as the main fields
     const [showMore, setShowMore] = useState(false);
     const [basisG, setBasisG] = useState(100);      // label basis: values are per 100 g, or per a serving of N g
+    const [microSrc, setMicroSrc] = useState(null); // similar food whose vitamins & minerals are copied per gram
     const onN = (k) => (e) => setV(s => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
     const valid = v.name.trim().length > 0 && Number(v.grams) > 0 && Number(basisG) > 0;
     // Blank fiber / sugar / sodium etc. = unknown (kept as null so averages aren't dragged down).
@@ -4931,17 +5088,28 @@
       if (val === null) return;
       if (NUTRIENT_KEYS.indexOf(k) >= 0) per100[k] = val; else per100.micros[k] = val;
     });
+    // Copied values fill only what the label didn't give; calories, macros, fiber, sugar and sodium stay as entered.
+    let copiedN = 0;
+    if (microSrc) {
+      const f100 = 100 / foodBaseGrams(microSrc);
+      Object.keys(microSrc.micros || {}).forEach(k => {
+        if (per100.micros[k] == null && microSrc.micros[k] != null) { per100.micros[k] = Math.round(microSrc.micros[k] * f100 * 1000) / 1000; copiedN++; }
+      });
+      if (per100.potassium == null && microSrc.potassium != null) per100.potassium = Math.round(microSrc.potassium * f100 * 10) / 10;
+    }
+    const estFlags = microSrc ? { microsEstimated: true, microsFrom: microSrc.name } : {};
+    const existing = (customFoods || []).find(f => foodNameKey(f.name) === foodNameKey(v.name));
     const portion = scaleFoodToWeight(per100, Number(v.grams) || 0);
 
     const submit = () => {
       if (foodOnly) {
-        onFood({ id: "manual-" + uid(), name: v.name.trim(), serving: "100g", g: 100, ...nutritionOf(per100), src: "custom",
+        onFood({ id: "manual-" + uid(), name: v.name.trim(), serving: "100g", g: 100, ...nutritionOf(per100), src: "custom", ...estFlags,
           units: Number(basisG) !== 100 ? [{ label: "1 serving", g: Number(basisG) }] : [] });
         return;
       }
       const scaled = scaleFoodToWeight(per100, Number(v.grams) || 0);
       const foodForDb = saveForFuture
-        ? { name: v.name.trim(), serving: "100g", g: 100, ...nutritionOf(per100), src: "custom",
+        ? { name: v.name.trim(), serving: "100g", g: 100, ...nutritionOf(per100), src: "custom", ...estFlags,
             units: Number(basisG) !== 100 ? [{ label: "1 serving", g: Number(basisG) }] : [] }
         : null;
       onAdd({
@@ -4984,6 +5152,17 @@
         h("label", null, "Sodium (mg)"),
         h("input", { className: "input", type: "number", value: v.sodium, placeholder: "unknown", onChange: onN("sodium") })
       ),
+      h("div", { style: { background: "var(--card2)", borderRadius: 10, padding: 12, margin: "4px 0 10px" } },
+        h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, "Vitamins & minerals"),
+        microSrc
+          ? h(React.Fragment, null,
+              h("div", { style: { fontSize: 12.5, marginTop: 4 } }, "Estimated from ", h("b", null, microSrc.name),
+                ": " + copiedN + " vitamins & minerals, copied per gram."),
+              h("div", { style: { fontSize: 11.5, color: "var(--muted)", marginTop: 2 } }, "Your calories, macros, fiber, sugar and sodium aren't changed. Values from the label below take priority."),
+              h("div", { style: { display: "flex", gap: 6, marginTop: 8 } },
+                h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "5px 10px" }, onClick: () => setMicroSrc(null) }, "Pick a different food"),
+                h("button", { className: "pill", style: { border: "none", cursor: "pointer", padding: "5px 10px" }, onClick: () => setMicroSrc(null) }, "Don't estimate")))
+          : h(MicroSourcePicker, { name: v.name, customFoods, onPick: setMicroSrc })),
       !showMore
         ? h("button", { className: "btn secondary", style: { marginTop: 4 }, onClick: () => setShowMore(true) }, "More nutrients from the label (optional)")
         : h("div", { style: { marginTop: 6 } },
@@ -5005,7 +5184,7 @@
       ),
       !foodOnly && h("label", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 14, cursor: "pointer" } },
         h("input", { type: "checkbox", checked: saveForFuture, onChange: (e) => setSaveForFuture(e.target.checked), style: { width: 16, height: 16 } }),
-        h("span", { style: { fontSize: 12.5, color: "var(--text)" } }, "Save this dish to my food database for future use")
+        h("span", { style: { fontSize: 12.5, color: "var(--text)" } }, existing ? "Update my saved \u201c" + existing.name + "\u201d with these values" : "Save this dish to my food database for future use")
       ),
       h("div", { className: "btn-row", style: { marginTop: 10 } },
         h("button", { className: "btn", disabled: foodOnly ? !(v.name.trim() && Number(basisG) > 0) : !valid, onClick: submit }, submitLabel || "Add to meal")

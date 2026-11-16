@@ -2,7 +2,7 @@
 // The app page is fetched from the network first, so updates show up as soon as you're online;
 // the last copy is used when offline. Libraries (React) and other static files are served from cache.
 // Nutrition lookups (Open Food Facts, USDA and others) are never cached.
-const CACHE = "fittrack-shell-v2";
+const CACHE = "fittrack-shell-v3";
 const SHELL = ["./", "./index.html"];
 const LIBS = [
   "https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js",
@@ -40,7 +40,8 @@ self.addEventListener("fetch", (e) => {
     e.respondWith((async () => {
       const c = await caches.open(CACHE);
       try {
-        const res = await fetch(req);
+        // skip the browser's HTTP cache so a freshly uploaded index.html shows up right away
+        const res = await fetch(req.url, { cache: "no-cache", credentials: "same-origin" });
         if (res.ok) c.put("./index.html", res.clone());
         return res;
       } catch (err) {
